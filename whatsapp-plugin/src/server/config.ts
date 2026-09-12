@@ -18,6 +18,7 @@ export interface AppConfig {
   enableDemoProvider?: boolean;
   autoMigrate?: boolean;
   officialOnly?: boolean;
+  allowUnofficialWhatsApp?: boolean;
   allowPrivateAiEndpoints: boolean;
   baileysProxyUrl?: string;
   mediaStoragePath?: string;
@@ -140,6 +141,11 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     environment.WHATSAPP_OFFICIAL_ONLY,
     nodeEnv === "production"
   );
+  const allowUnofficialWhatsApp = parseBoolean(
+    "ALLOW_UNOFFICIAL_WHATSAPP",
+    environment.ALLOW_UNOFFICIAL_WHATSAPP,
+    false
+  );
   const metaGraphBaseUrl = parseMetaGraphBaseUrl(environment.META_GRAPH_BASE_URL);
 
   if ((databaseClient === "postgres" || databaseClient === "mysql") && !databaseUrl) {
@@ -154,7 +160,11 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     if (seedDemo) throw new Error("SEED_DEMO must be false in production");
     if (enableDemoProvider) throw new Error("ALLOW_DEMO_PROVIDER must be false in production");
     if (autoMigrate) throw new Error("AUTO_MIGRATE must be false in production");
-    if (!officialOnly) throw new Error("WHATSAPP_OFFICIAL_ONLY must be true in production");
+    if (!officialOnly && !allowUnofficialWhatsApp) {
+      throw new Error(
+        "WHATSAPP_OFFICIAL_ONLY may be false in production only when ALLOW_UNOFFICIAL_WHATSAPP=true"
+      );
+    }
     if (metaGraphBaseUrl && metaGraphBaseUrl !== "https://graph.facebook.com") {
       throw new Error("META_GRAPH_BASE_URL must use https://graph.facebook.com in production");
     }
@@ -176,6 +186,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     enableDemoProvider,
     autoMigrate,
     officialOnly,
+    allowUnofficialWhatsApp,
     allowPrivateAiEndpoints: parseBoolean(
       "ALLOW_PRIVATE_AI_ENDPOINTS",
       environment.ALLOW_PRIVATE_AI_ENDPOINTS,

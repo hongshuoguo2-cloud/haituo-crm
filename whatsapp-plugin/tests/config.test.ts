@@ -74,6 +74,16 @@ describe("server configuration", () => {
       .toBe("https://graph.facebook.com");
   });
 
+  it("allows an explicit production opt-in to the risk-acknowledged QR channel", () => {
+    expect(loadConfig(productionEnvironment({
+      WHATSAPP_OFFICIAL_ONLY: "false",
+      ALLOW_UNOFFICIAL_WHATSAPP: "true"
+    }))).toMatchObject({
+      officialOnly: false,
+      allowUnofficialWhatsApp: true
+    });
+  });
+
   it("rejects ambiguous or unsafe production configuration", () => {
     expect(() => loadConfig({ NODE_ENV: "prod" })).toThrow(/NODE_ENV/u);
     expect(() => loadConfig({ DATABASE_CLIENT: "postres" })).toThrow(/DATABASE_CLIENT/u);

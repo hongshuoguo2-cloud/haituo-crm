@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $haituoApp = 'C:\Haituo'
 $haituoData = 'C:\HaituoData'
 $haituoTaskName = 'HaituoWeb'
+$haituoCommunicationTaskName = 'HaituoCommunication'
 $haituoPayload = Join-Path $ReleaseRoot 'payload'
 $haituoManifestPath = Join-Path $ReleaseRoot 'manifest.json'
 $haituoReleasePath = Join-Path $ReleaseRoot 'release.json'
@@ -83,7 +84,34 @@ function Backup-HaituoDatabase([string]$BackupRoot) {
     return $gzipPath
 }
 
-$required = @('backend/dist/server.js', 'frontend/dist/index.html', 'package-lock.json', 'whatsapp-plugin/package-lock.json', 'scripts/start-haituo-cloud.ps1')
+function Ensure-HaituoCommunicationKey([string]$EnvironmentPath) {
+    $lines = @(Get-Content -LiteralPath $EnvironmentPath -Encoding UTF8)
+    $matches = @($lines | Where-Object { $_ -match '^SESSION_MASTER_KEY=' })
+    if ($matches.Count -gt 1) { throw 'C:\Haituo\.env contains more than one SESSION_MASTER_KEY.' }
+    if ($matches.Count -eq 0) {
+        $bytes = New-Object byte[] 32
+        $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $generator.GetBytes($bytes) } finally { $generator.Dispose() }
+        $value = [Convert]::ToBase64String($bytes)
+        Add-Content -LiteralPath $EnvironmentPath -Value "`r`nSESSION_MASTER_KEY=$value" -Encoding UTF8
+        return $value
+    }
+    $value = ([string]$matches[0]).Substring('SESSION_MASTER_KEY='.Length).Trim()
+    try { $decoded = [Convert]::FromBase64String($value) } catch { throw 'SESSION_MASTER_KEY in C:\Haituo\.env is not valid base64.' }
+    if ($decoded.Length -ne 32) { throw 'SESSION_MASTER_KEY in C:\Haituo\.env must decode to exactly 32 bytes.' }
+    return $value
+}
+
+$required = @(
+    'backend/dist/server.js',
+    'frontend/dist/index.html',
+    'package-lock.json',
+    'whatsapp-plugin/package-lock.json',
+    'whatsapp-plugin/dist-server/server/index.js',
+    'whatsapp-plugin/dist-server/server/scripts/migrate.js',
+    'scripts/start-haituo-cloud.ps1',
+    'scripts/start-haituo-communication.ps1'
+)
 $manifestPaths = @($haituoManifest.files | ForEach-Object { [string]$_.path })
 foreach ($item in $required) { if ($manifestPaths -notcontains $item) { throw "Update is missing required file: $item" } }
 foreach ($entry in $haituoManifest.files) {
@@ -104,13 +132,28 @@ function Register-HaituoWebTask {
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -StartWhenAvailable
     Register-ScheduledTask -TaskName $haituoTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
+function Register-HaituoCommunicationTask {
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Haituo\scripts\start-haituo-communication.ps1" -NodePath "' + $haituoNode + '"') -WorkingDirectory (Join-Path $haituoApp 'whatsapp-plugin')
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -StartWhenAvailable
+    Register-ScheduledTask -TaskName $haituoCommunicationTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
 $haituoOldTask = Get-ScheduledTask -TaskName $haituoTaskName -ErrorAction SilentlyContinue
 if ($haituoOldTask -and (($haituoOldTask.Actions | ForEach-Object { $_.Arguments }) -join ' ') -notlike '*C:\Haituo\scripts\start-haituo-cloud.ps1*') { throw 'A different task already uses the name HaituoWeb.' }
+$haituoOldCommunicationTask = Get-ScheduledTask -TaskName $haituoCommunicationTaskName -ErrorAction SilentlyContinue
+if ($haituoOldCommunicationTask -and (($haituoOldCommunicationTask.Actions | ForEach-Object { $_.Arguments }) -join ' ') -notlike '*C:\Haituo\scripts\start-haituo-communication.ps1*') { throw 'A different task already uses the name HaituoCommunication.' }
 $haituoPids = @(Get-NetTCPConnection -State Listen -LocalPort 4188 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
 foreach ($haituoPid in $haituoPids) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$haituoPid"
     $command = ([string]$process.CommandLine).Replace('\','/').Replace('"','').ToLowerInvariant()
     if ($process.Name -ne 'node.exe' -or -not $command.Contains('c:/haituo/.env') -or -not $command.Contains('backend/dist/server.js')) { throw 'Port 4188 belongs to an unexpected process.' }
+}
+$haituoCommunicationPids = @(Get-NetTCPConnection -State Listen -LocalPort 3100 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+foreach ($haituoPid in $haituoCommunicationPids) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId=$haituoPid"
+    $command = ([string]$process.CommandLine).Replace('\','/').Replace('"','').ToLowerInvariant()
+    if ($process.Name -ne 'node.exe' -or -not $command.Contains('whatsapp-plugin/dist-server/server/index.js')) { throw 'Port 3100 belongs to an unexpected process.' }
 }
 
 $backup = Join-Path $haituoData ('update-backups\v' + $haituoManifest.version + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
@@ -125,8 +168,11 @@ foreach ($entry in $haituoManifest.files) {
         Copy-Item -LiteralPath $target -Destination $backupFile
     } else { $createdFiles.Add($target) }
 }
+Copy-Item -LiteralPath "$haituoApp\.env" -Destination (Join-Path $backup 'previous-env')
 if ($haituoOldTask) { Export-ScheduledTask -TaskName $haituoTaskName | Set-Content (Join-Path $backup 'previous-task.xml') -Encoding UTF8; Stop-ScheduledTask -TaskName $haituoTaskName }
+if ($haituoOldCommunicationTask) { Export-ScheduledTask -TaskName $haituoCommunicationTaskName | Set-Content (Join-Path $backup 'previous-communication-task.xml') -Encoding UTF8; Stop-ScheduledTask -TaskName $haituoCommunicationTaskName }
 foreach ($haituoPid in $haituoPids) { Stop-Process -Id $haituoPid -Force -ErrorAction SilentlyContinue }
+foreach ($haituoPid in $haituoCommunicationPids) { Stop-Process -Id $haituoPid -Force -ErrorAction SilentlyContinue }
 
 $rootModules = Join-Path $haituoApp 'node_modules'
 $pluginModules = Join-Path $haituoApp 'whatsapp-plugin\node_modules'
@@ -149,7 +195,29 @@ try {
         $pluginProcess = Start-Process -FilePath $haituoNpm -ArgumentList @('ci','--omit=dev','--ignore-scripts','--workspaces=false','--no-audit','--no-fund') -WorkingDirectory (Join-Path $haituoApp 'whatsapp-plugin') -PassThru -Wait -WindowStyle Hidden
         if ($pluginProcess.ExitCode -ne 0) { throw 'Communication production dependency installation failed.' }
     }
+    $sessionMasterKey = Ensure-HaituoCommunicationKey "$haituoApp\.env"
+    $communicationLogDir = Join-Path $haituoData 'logs'
+    $communicationMediaDir = Join-Path $haituoData 'communication-media'
+    New-Item -ItemType Directory -Path $communicationLogDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $communicationMediaDir -Force | Out-Null
+    $env:NODE_ENV = 'production'
+    $env:HOST = '127.0.0.1'
+    $env:PORT = '3100'
+    $env:WEB_ORIGIN = 'https://demo.linqiagent.cn'
+    $env:DATABASE_CLIENT = 'mysql'
+    $env:SESSION_MASTER_KEY = $sessionMasterKey
+    $env:AUTO_MIGRATE = 'false'
+    $env:SEED_DEMO = 'false'
+    $env:ALLOW_DEMO_PROVIDER = 'false'
+    $env:WHATSAPP_OFFICIAL_ONLY = 'false'
+    $env:ALLOW_UNOFFICIAL_WHATSAPP = 'true'
+    $env:MEDIA_STORAGE_PATH = $communicationMediaDir
+    $env:CRM_BASE_URL = 'http://127.0.0.1:4188'
+    $migrationLog = Join-Path $communicationLogDir ('communication-migration-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
+    & $haituoNode --env-file="$haituoApp\.env" "$haituoApp\whatsapp-plugin\dist-server\server\scripts\migrate.js" *> $migrationLog
+    if ($LASTEXITCODE -ne 0) { throw "Communication database migration failed. See $migrationLog" }
     Register-HaituoWebTask
+    Register-HaituoCommunicationTask
     Start-ScheduledTask -TaskName $haituoTaskName
     $ready = $false
     for ($i=0; $i -lt 90; $i++) {
@@ -157,6 +225,14 @@ try {
         Start-Sleep -Seconds 2
     }
     if (-not $ready) { throw 'Application health check timed out.' }
+    Start-ScheduledTask -TaskName $haituoCommunicationTaskName
+    $communicationReady = $false
+    for ($i=0; $i -lt 90; $i++) {
+        try { if ((Invoke-WebRequest 'http://127.0.0.1:3100/api/health/ready' -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { $communicationReady=$true; break } } catch {}
+        Start-Sleep -Seconds 2
+    }
+    if (-not $communicationReady) { throw 'Communication health check timed out.' }
+    if ((Invoke-WebRequest 'http://127.0.0.1:4188/whatsapp-plugin/api/health/ready' -UseBasicParsing -TimeoutSec 10).StatusCode -ne 200) { throw 'Communication proxy health check failed.' }
     $stateDir = Join-Path $haituoData 'updater'
     New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
     @{ version=[string]$haituoManifest.version; installedAt=[DateTime]::UtcNow.ToString('o'); backup=$backup } | ConvertTo-Json | Set-Content (Join-Path $stateDir 'installed-release.json') -Encoding UTF8
@@ -165,11 +241,13 @@ try {
     Write-Host "File backup: $backup"
 } catch {
     Stop-ScheduledTask -TaskName $haituoTaskName -ErrorAction SilentlyContinue
+    Stop-ScheduledTask -TaskName $haituoCommunicationTaskName -ErrorAction SilentlyContinue
     foreach ($createdFile in $createdFiles) { if (Test-Path -LiteralPath $createdFile -PathType Leaf) { Remove-Item -LiteralPath $createdFile -Force } }
     foreach ($entry in $haituoManifest.files) {
         $backupFile = Resolve-HaituoChild $backup ([string]$entry.path)
         if (Test-Path -LiteralPath $backupFile -PathType Leaf) { Copy-Item -LiteralPath $backupFile -Destination (Resolve-HaituoChild $haituoApp ([string]$entry.path)) -Force }
     }
+    Copy-Item -LiteralPath (Join-Path $backup 'previous-env') -Destination "$haituoApp\.env" -Force
     if ($rootDependenciesChanged -and (Test-Path $rootModulesBackup)) { Remove-HaituoDependencyTree $rootModules $haituoApp; Move-Item -LiteralPath $rootModulesBackup -Destination $rootModules }
     if ($pluginDependenciesChanged -and (Test-Path $pluginModulesBackup)) { Remove-HaituoDependencyTree $pluginModules (Join-Path $haituoApp 'whatsapp-plugin'); Move-Item -LiteralPath $pluginModulesBackup -Destination $pluginModules }
     if ($haituoOldTask) {
@@ -180,6 +258,12 @@ try {
         Copy-Item -LiteralPath (Join-Path $haituoPayload 'scripts\start-haituo-cloud.ps1') -Destination $launcherTarget -Force
         Register-HaituoWebTask
     }
+    if ($haituoOldCommunicationTask) {
+        Register-ScheduledTask -TaskName $haituoCommunicationTaskName -Xml (Get-Content (Join-Path $backup 'previous-communication-task.xml') -Raw) -Force | Out-Null
+    } else {
+        Unregister-ScheduledTask -TaskName $haituoCommunicationTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
     Start-ScheduledTask -TaskName $haituoTaskName
+    if ($haituoOldCommunicationTask) { Start-ScheduledTask -TaskName $haituoCommunicationTaskName }
     throw "Update failed and previous files were restored. Backup: $backup. $($_.Exception.Message)"
 }

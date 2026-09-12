@@ -11,7 +11,7 @@ const secret = "ownership-test-secret-at-least-32-characters";
 function token(userId: string): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "HS256", typ: "JWT" });
-  const payload = encode({ sub: userId, ver: 1, iss: "goodjob-crm", aud: "goodjob-crm-web", exp: Math.floor(Date.now() / 1000) + 3600 });
+  const payload = encode({ sub: userId, ver: 1, iss: "haituo-crm", aud: "haituo-crm-web", exp: Math.floor(Date.now() / 1000) + 3600 });
   const signature = createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${signature}`;
 }

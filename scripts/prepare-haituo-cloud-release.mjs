@@ -50,6 +50,7 @@ const runtimeFiles = [
   "README.md",
   "HAITUO.md",
   "scripts/start-haituo-cloud.ps1",
+  "scripts/start-haituo-communication.ps1",
   "scripts/reset-haituo-admin-password.mjs",
   "deploy/windows/check-haituo-update.ps1",
   "deploy/windows/install-haituo-auto-update.ps1",
