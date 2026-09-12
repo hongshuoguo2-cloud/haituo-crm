@@ -200,22 +200,37 @@ try {
     $communicationMediaDir = Join-Path $haituoData 'communication-media'
     New-Item -ItemType Directory -Path $communicationLogDir -Force | Out-Null
     New-Item -ItemType Directory -Path $communicationMediaDir -Force | Out-Null
-    $env:NODE_ENV = 'production'
-    $env:HOST = '127.0.0.1'
-    $env:PORT = '3100'
-    $env:WEB_ORIGIN = 'https://demo.linqiagent.cn'
-    $env:DATABASE_CLIENT = 'mysql'
-    $env:SESSION_MASTER_KEY = $sessionMasterKey
-    $env:AUTO_MIGRATE = 'false'
-    $env:SEED_DEMO = 'false'
-    $env:ALLOW_DEMO_PROVIDER = 'false'
-    $env:WHATSAPP_OFFICIAL_ONLY = 'false'
-    $env:ALLOW_UNOFFICIAL_WHATSAPP = 'true'
-    $env:MEDIA_STORAGE_PATH = $communicationMediaDir
-    $env:CRM_BASE_URL = 'http://127.0.0.1:4188'
+    $communicationEnvironment = [ordered]@{
+        NODE_ENV = 'production'
+        HOST = '127.0.0.1'
+        PORT = '3100'
+        WEB_ORIGIN = 'https://demo.linqiagent.cn'
+        DATABASE_CLIENT = 'mysql'
+        SESSION_MASTER_KEY = $sessionMasterKey
+        AUTO_MIGRATE = 'false'
+        SEED_DEMO = 'false'
+        ALLOW_DEMO_PROVIDER = 'false'
+        WHATSAPP_OFFICIAL_ONLY = 'false'
+        ALLOW_UNOFFICIAL_WHATSAPP = 'true'
+        MEDIA_STORAGE_PATH = $communicationMediaDir
+        CRM_BASE_URL = 'http://127.0.0.1:4188'
+    }
+    $previousCommunicationEnvironment = @{}
+    foreach ($name in $communicationEnvironment.Keys) {
+        $previousCommunicationEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, [string]$communicationEnvironment[$name], 'Process')
+    }
     $migrationLog = Join-Path $communicationLogDir ('communication-migration-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
-    & $haituoNode --env-file="$haituoApp\.env" "$haituoApp\whatsapp-plugin\dist-server\server\scripts\migrate.js" *> $migrationLog
-    if ($LASTEXITCODE -ne 0) { throw "Communication database migration failed. See $migrationLog" }
+    $migrationExitCode = -1
+    try {
+        & $haituoNode --env-file="$haituoApp\.env" "$haituoApp\whatsapp-plugin\dist-server\server\scripts\migrate.js" *> $migrationLog
+        $migrationExitCode = $LASTEXITCODE
+    } finally {
+        foreach ($name in $communicationEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previousCommunicationEnvironment[$name], 'Process')
+        }
+    }
+    if ($migrationExitCode -ne 0) { throw "Communication database migration failed. See $migrationLog" }
     Register-HaituoWebTask
     Register-HaituoCommunicationTask
     Start-ScheduledTask -TaskName $haituoTaskName
