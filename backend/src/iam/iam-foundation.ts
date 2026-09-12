@@ -345,7 +345,7 @@ async function createTables(pool: mysql.Pool) {
     id VARCHAR(90) PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
-    mfa_required BOOLEAN NOT NULL DEFAULT TRUE,
+    mfa_required BOOLEAN NOT NULL DEFAULT FALSE,
     auth_version BIGINT NOT NULL DEFAULT 1,
     created_at DATETIME(3) NOT NULL,
     updated_at DATETIME(3) NOT NULL,
@@ -560,9 +560,9 @@ async function seedLegacyCompatibility(pool: mysql.Pool) {
     ON DUPLICATE KEY UPDATE name=VALUES(name), updated_at=NOW(3)`);
   await pool.query(`INSERT INTO platform_operators
     (id, user_id, status, mfa_required, auth_version, created_at, updated_at)
-    SELECT CONCAT('pop_', LEFT(SHA2(u.id, 256), 40)), u.id, 'active', TRUE, 1, NOW(3), NOW(3)
+    SELECT CONCAT('pop_', LEFT(SHA2(u.id, 256), 40)), u.id, 'active', FALSE, 1, NOW(3), NOW(3)
     FROM users u WHERE u.role = 'super_admin'
-    ON DUPLICATE KEY UPDATE status='active', updated_at=NOW(3)`);
+    ON DUPLICATE KEY UPDATE status='active', mfa_required=FALSE, updated_at=NOW(3)`);
   await pool.query(`INSERT IGNORE INTO platform_operator_role_assignments
     (operator_id, role_id, status, granted_at)
     SELECT id, 'platform_owner', 'active', NOW(3) FROM platform_operators`);

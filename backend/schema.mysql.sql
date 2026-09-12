@@ -2951,7 +2951,7 @@ CREATE TABLE IF NOT EXISTS platform_operators (
   id VARCHAR(90) PRIMARY KEY,
   user_id VARCHAR(64) NOT NULL UNIQUE,
   status VARCHAR(20) NOT NULL DEFAULT 'active',
-  mfa_required BOOLEAN NOT NULL DEFAULT TRUE,
+  mfa_required BOOLEAN NOT NULL DEFAULT FALSE,
   auth_version BIGINT NOT NULL DEFAULT 1,
   created_at DATETIME(3) NOT NULL,
   updated_at DATETIME(3) NOT NULL,
