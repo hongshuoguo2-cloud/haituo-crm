@@ -19,6 +19,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Haituo\deploy\windows\in
 
 此操作只需要执行一次。计划任务名为 `HaituoAutoUpdate`，默认每 15 分钟运行，也会在服务器启动时运行。第一次仍需把“自动更新初始化包”上传到当前服务器；之后发布稳定版本便不再手动上传。
 
+## 重置平台管理员密码
+
+如果首次部署生成的随机密码无法通过远程桌面剪贴板取回，在管理员 PowerShell 中运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Haituo\deploy\windows\reset-haituo-admin-password.ps1"
+```
+
+命令会隐藏输入并要求重复确认新密码，只更新 `INITIAL_ADMIN_EMAIL` 对应的有效平台管理员，然后重启 `HaituoWeb` 并进行健康检查。密码不会作为命令行参数或日志内容保存。
+
 ## 安全与恢复
 
 - 只读取 GitHub 的最新稳定 Release。

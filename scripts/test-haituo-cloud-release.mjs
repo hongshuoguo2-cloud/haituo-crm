@@ -19,6 +19,8 @@ try {
   assert(existsSync(path.join(output, "payload/backend/dist/server.js")));
   assert(existsSync(path.join(output, "payload/frontend/dist/index.html")));
   assert(existsSync(path.join(output, "payload/whatsapp-plugin/dist-server/server/index.js")));
+  assert(existsSync(path.join(output, "payload/scripts/reset-haituo-admin-password.mjs")));
+  assert(existsSync(path.join(output, "payload/deploy/windows/reset-haituo-admin-password.ps1")));
   assert.equal(JSON.parse(readFileSync(path.join(output, "payload/package.json"), "utf8")).version, "9.8.7-test");
   assert.equal(JSON.parse(readFileSync(path.join(output, "payload/frontend/dist/product-config.json"), "utf8")).version, "9.8.7-test");
   for (const entry of manifest.files) {
