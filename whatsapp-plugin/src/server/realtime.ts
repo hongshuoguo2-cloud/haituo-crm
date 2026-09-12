@@ -17,7 +17,7 @@ export class RealtimeHub {
     });
     this.socket.use((socket, next) => {
       const header = socket.handshake.headers.authorization;
-      const cookie = String(socket.handshake.headers.cookie || "").split(";").find((item) => item.trim().startsWith("gj_session="))?.split("=").slice(1).join("=") || "";
+      const cookie = String(socket.handshake.headers.cookie || "").split(";").find((item) => item.trim().startsWith("ht_session="))?.split("=").slice(1).join("=") || "";
       let token = header?.startsWith("Bearer ") ? header.slice(7) : cookie;
       try { token = decodeURIComponent(token); } catch { token = ""; }
       const identity = verifyCrmToken(config.crmJwtSecret, token);

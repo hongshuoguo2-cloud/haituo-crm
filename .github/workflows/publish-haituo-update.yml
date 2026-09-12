@@ -1,0 +1,76 @@
+name: Publish Haituo Windows update
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: haituo-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            whatsapp-plugin/package-lock.json
+
+      - name: Install application dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install communication dependencies
+        run: npm --prefix whatsapp-plugin ci --workspaces=false --no-audit --no-fund
+
+      - name: Build all production modules
+        run: npm run build
+
+      - name: Verify updater and release layout
+        run: |
+          npm run test:auto-updater --workspace backend
+          npm run test:release:cloud
+
+      - name: Create versioned Windows cloud update
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          stage=".release/haituo-cloud-windows-v${version}"
+          mkdir -p .release
+          node scripts/prepare-haituo-cloud-release.mjs "$version" "$stage"
+          archive=".release/haituo-cloud-windows-v${version}.zip"
+          (cd "$stage" && zip -q -r -9 "../$(basename "$archive")" .)
+          (cd .release && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
+          unzip -t "$archive"
+          if unzip -Z1 "$archive" | grep -E '(^|/)(\.env([^/]*|$)|node_modules|\.git)(/|$)'; then
+            echo "Release archive contains a forbidden path" >&2
+            exit 1
+          fi
+
+      - name: Publish stable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          archive=".release/haituo-cloud-windows-v${version}.zip"
+          gh release create "$GITHUB_REF_NAME" \
+            "$archive" \
+            "$archive.sha256" \
+            --verify-tag \
+            --generate-notes \
+            --title "海拓 ${GITHUB_REF_NAME}"

@@ -1,4 +1,15 @@
-# GoodJob CRM 外贸客户管理软件原型交付
+# 海拓 CRM
+
+海拓是一套开源的外贸客户工作台，基于 GoodJob CRM 二次开发，提供客户管理、销售跟进、AI 配置、WhatsApp 集成和管理员开户等能力。
+
+- 在线演示：https://demo.linqiagent.cn
+- 海拓部署说明：[HAITUO.md](HAITUO.md)
+- Windows 自动更新：[deploy/windows/AUTO-UPDATE.md](deploy/windows/AUTO-UPDATE.md)
+- 上游项目：https://gitee.com/sendoh-huang/GoodJob
+
+项目保留原 LICENSE、NOTICE 和各模块的第三方归属说明。请勿提交 `.env`、数据库备份、登录凭据或运行数据。
+
+## GoodJob CRM 外贸客户管理软件原型交付
 
 ## WhatsApp 集成
 

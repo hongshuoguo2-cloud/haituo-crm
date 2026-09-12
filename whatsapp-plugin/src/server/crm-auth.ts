@@ -41,10 +41,10 @@ export function verifyCrmToken(secret: string | undefined, token: string): CrmId
   if (!header || !payload) return null;
   try {
     const parsedHeader = JSON.parse(header) as { alg?: string };
-    const claims = JSON.parse(payload) as { sub?: string; ver?: number; iss?: string; aud?: string; exp?: number; nbf?: number };
+    const claims = JSON.parse(payload) as { sub?: string; ver?: number; iss?: string; aud?: string; exp?: number; nbf?: number; purpose?: string };
     const now = Math.floor(Date.now() / 1000);
-    if (parsedHeader.alg !== "HS256" || claims.iss !== "goodjob-crm" || claims.aud !== "goodjob-crm-web"
-      || !claims.sub || !Number.isFinite(claims.exp) || (claims.exp as number) <= now
+    if (parsedHeader.alg !== "HS256" || claims.iss !== "haituo-crm" || claims.aud !== "haituo-crm-web"
+      || claims.purpose || !claims.sub || !Number.isFinite(claims.exp) || (claims.exp as number) <= now
       || (claims.nbf !== undefined && claims.nbf > now)) return null;
     const expected = createHmac("sha256", secret).update(`${encodedHeader}.${encodedPayload}`).digest();
     const actual = Buffer.from(encodedSignature, "base64url");
@@ -72,7 +72,7 @@ export function requireCrmAuth(secret: string | undefined) {
     const authorization = request.header("authorization");
     const token = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length).trim()
-      : readCookie(request.header("cookie"), "gj_session");
+      : readCookie(request.header("cookie"), "ht_session");
     const identity = verifyCrmToken(secret, token);
     if (!identity) {
       response.status(401).json({ error: "CRM login required", code: "CRM_AUTH_REQUIRED" });

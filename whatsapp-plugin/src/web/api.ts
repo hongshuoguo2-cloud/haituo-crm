@@ -190,17 +190,17 @@ class ApiClient {
       body: JSON.stringify({ completionResult: "已从即刻沟通客户跟进面板完成" })
     });
     const payload = (await response.json().catch(() => ({}))) as { todo?: CrmTodoSnapshot; message?: string };
-    if (!response.ok || !payload.todo) throw new Error(payload.message ?? `GoodJob 待办完成失败 (${response.status})`);
+    if (!response.ok || !payload.todo) throw new Error(payload.message ?? `海拓 待办完成失败 (${response.status})`);
     return payload.todo;
   };
-  createGoodJobTodo = async (input: { title: string; priority: ConversationFollowUp["priority"]; dueAt: string; related: string; customerId?: string; triggerKey?: string }): Promise<unknown> => {
+  create海拓Todo = async (input: { title: string; priority: ConversationFollowUp["priority"]; dueAt: string; related: string; customerId?: string; triggerKey?: string }): Promise<unknown> => {
     const response = await fetch("/api/todos", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...input, type: "customer" })
     });
-    if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as { message?: string }).message ?? `GoodJob 待办创建失败 (${response.status})`);
+    if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as { message?: string }).message ?? `海拓 待办创建失败 (${response.status})`);
     return response.json();
   };
   sendMessage = (conversationId: string, input: { accountId: string; clientMessageId: string; body: string }) =>

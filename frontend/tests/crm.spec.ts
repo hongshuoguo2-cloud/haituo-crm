@@ -45,7 +45,7 @@ async function apiFromPage<T>(
     const method = requestInit.method || "GET";
     const csrfToken = document.cookie
       .split("; ")
-      .find((part) => part.startsWith("gj_csrf="))
+      .find((part) => part.startsWith("ht_csrf="))
       ?.split("=")
       .slice(1)
       .join("=");
@@ -464,7 +464,7 @@ function buildCustomerWorkbookBuffer(company: string) {
   return Buffer.from(XLSX.write(workbook, { bookType: "xlsx", type: "buffer" }));
 }
 
-test.describe("GoodJob CRM prototype pages", () => {
+test.describe("海拓 CRM prototype pages", () => {
   let runId: string;
 
   test.beforeEach(async ({ page }) => {
@@ -1250,7 +1250,7 @@ test.describe("GoodJob CRM prototype pages", () => {
       body: {
         outboundEmail: "admin.sender@example.com",
         emailSenderName: "Admin Sales",
-        emailSignature: "Best regards,\nAdmin Sales\nGoodJob Export",
+        emailSignature: "Best regards,\nAdmin Sales\n海拓 Export",
         smtpHost: "smtp.example.com",
         smtpPort: 465,
         smtpSecure: true,
@@ -1262,7 +1262,7 @@ test.describe("GoodJob CRM prototype pages", () => {
     await page.reload();
     await expect(page.locator("body")).toHaveClass(/is-authenticated/);
     await openView(page, "settings");
-    await page.locator("#companyProfileName").fill("GoodJob Export Ltd.");
+    await page.locator("#companyProfileName").fill("海拓 Export Ltd.");
     await page.locator("#companyProfileWebsite").fill("https://goodjob.example.com");
     await page.locator("#companyProfileEmail").fill("sales@goodjob.example.com");
     await page.locator("#companyProfileProducts").fill("industrial lighting and export sourcing solutions");
@@ -1634,7 +1634,7 @@ test.describe("GoodJob CRM prototype pages", () => {
     const rejection = await page.evaluate(async ({ recordId }) => {
       const csrfToken = document.cookie
         .split("; ")
-        .find((part) => part.startsWith("gj_csrf="))
+        .find((part) => part.startsWith("ht_csrf="))
         ?.split("=")
         .slice(1)
         .join("=");
@@ -1710,7 +1710,7 @@ test.describe("GoodJob CRM prototype pages", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.locator("#exportCustomersButton").click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toContain("GoodJob客户清单");
+    expect(download.suggestedFilename()).toContain("海拓客户清单");
     await expect(page.locator("#imports tbody")).toContainText("客户清单导出");
   });
 
@@ -3612,7 +3612,7 @@ test.describe("GoodJob CRM prototype pages", () => {
     const outboundEmail = `alex.sender.${runId}@example.com`;
     await page.locator("#profileOutboundEmail").fill(outboundEmail);
     await page.locator("#profileSenderName").fill("Alex Export");
-    await page.locator("#profileEmailSignature").fill("Best regards\\nAlex Export\\nGoodJob CRM");
+    await page.locator("#profileEmailSignature").fill("Best regards\\nAlex Export\\n海拓 CRM");
     await page.locator("#profileSaveButton").click();
     await expect(page.locator(".toast").last()).toContainText("个人邮箱配置已保存");
     await expect(page.locator("#profileEmailStatus")).toContainText(outboundEmail);
@@ -3815,7 +3815,7 @@ test.describe("GoodJob CRM prototype pages", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.locator("#reportExportButton").click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toContain("GoodJob-CRM");
+    expect(download.suggestedFilename()).toContain("海拓-CRM");
     const downloadPath = await download.path();
     expect(downloadPath).not.toBeNull();
     const exportText = await readFile(downloadPath!, "utf8");

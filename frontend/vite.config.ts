@@ -6,20 +6,20 @@ export default defineConfig({
   server: {
     proxy: {
       "/whatsapp-plugin/api": {
-        target: "http://127.0.0.1:3100",
+        target: "http://127.0.0.1:3200",
         rewrite: (path) => path.replace(/^\/whatsapp-plugin\/api/u, "/api")
       },
       "/whatsapp-plugin/socket.io": {
-        target: "http://127.0.0.1:3100",
+        target: "http://127.0.0.1:3200",
         ws: true,
         rewrite: (path) => path.replace(/^\/whatsapp-plugin\/socket\.io/u, "/socket.io")
       },
       "/whatsapp-plugin": {
-        target: "http://127.0.0.1:5193",
+        target: "http://127.0.0.1:5293",
         ws: true
       },
-      "/uploads": process.env.VITE_API_TARGET || "http://127.0.0.1:4188",
-      "/api": process.env.VITE_API_TARGET || "http://127.0.0.1:4188"
+      "/uploads": process.env.VITE_API_TARGET || "http://127.0.0.1:4288",
+      "/api": process.env.VITE_API_TARGET || "http://127.0.0.1:4288"
     }
   }
 });

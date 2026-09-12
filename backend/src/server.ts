@@ -1,4 +1,6 @@
 import cors from "cors";
+import { generateAccountCredentials } from "./haituo-accounts.js";
+import { signPasswordChangeToken, verifyPasswordChangeToken } from "./auth.js";
 import express, { type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -2628,7 +2630,35 @@ app.post("/api/auth/login", loginLimiter, asyncRoute(async (req, res) => {
       return;
     }
   }
+  if (user.mustChangePassword) {
+    const validSession = await store.validateIamSession?.(sessionUser);
+    if (validSession && !validSession.valid) { res.status(403).json({ message: "当前账号不可用，请联系管理员" }); return; }
+    res.clearCookie(AUTH_COOKIE_NAME, { ...sessionCookieOptions(), maxAge: undefined });
+    res.clearCookie(CSRF_COOKIE_NAME, { ...csrfCookieOptions(), maxAge: undefined });
+    res.setHeader("Cache-Control", "no-store");
+    res.status(202).json({ passwordChangeRequired: true, changeToken: signPasswordChangeToken(sessionUser) });
+    return;
+  }
   sendLoginSession(res, sessionUser);
+}));
+
+app.post("/api/auth/initial-password", loginLimiter, asyncRoute(async (req, res) => {
+  const body = z.object({ changeToken: z.string().min(20).max(4000), password: z.string().min(12).max(128) }).parse(req.body);
+  const claims = verifyPasswordChangeToken(body.changeToken);
+  const store = getStore();
+  const user = claims && store.users.find((u) => u.id === claims.userId && u.status === "active"
+    && u.mustChangePassword && (u.authVersion || 1) === claims.authVersion);
+  if (!user) { res.status(401).json({ message: "改密凭证无效或已使用，请重新登录" }); return; }
+  const validSession = await store.validateIamSession?.(publicUser(user));
+  if (validSession && !validSession.valid) { res.status(403).json({ message: "当前账号不可用，请联系管理员" }); return; }
+  if ((await verifyPassword(user.password, body.password)).valid) { res.status(400).json({ message: "新密码不能与临时密码相同" }); return; }
+  const passwordHash = await hashPassword(body.password);
+  if (!store.changeInitialPassword) { res.status(503).json({ message: "首次改密需要数据库服务" }); return; }
+  if (!await store.changeInitialPassword(user.id, claims!.authVersion, passwordHash)) {
+    res.status(409).json({ message: "账号状态已变化，请重新登录" }); return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, message: "密码已设置，请用新密码登录" });
 }));
 
 app.post("/api/auth/mfa/enroll", loginLimiter, asyncRoute(async (req, res) => {
@@ -3701,6 +3731,23 @@ app.get("/api/v1/members", requireAuth, asyncRoute(async (req, res) => {
   res.json({ data: overview.members || [], metrics: overview.metrics || null });
 }));
 
+app.post("/api/v1/members/quick-create", requireAuth, asyncRoute(async (req, res) => {
+  const body = z.object({ tenantId: z.string().max(64).optional(), name: z.string().trim().min(1).max(100),
+    email: z.string().trim().email().max(180).optional(), roleId: z.string().min(1).max(90) }).parse(req.body);
+  const service = iamServiceOrFail(res); if (!service) return;
+  const credentials = generateAccountCredentials();
+  if (body.email) credentials.email = body.email.toLowerCase();
+  try {
+    const result = await service.mutate(req.user!, "member.create", { ...body, ...credentials, mustChangePassword: true, reason: "管理员一键开户" }, iamMutationContext(req));
+    await getStore().reloadIamUsers?.();
+    res.setHeader("Cache-Control", "no-store");
+    res.status(201).json({ ...result, credentials });
+  } catch (error) {
+    const status = typeof error === "object" && error && "status" in error ? Number(error.status) : 500;
+    res.status(status >= 400 && status < 500 ? status : 500).json({ message: status >= 400 && status < 500 && error instanceof Error ? error.message : "开户失败，请刷新成员列表确认结果" });
+  }
+}));
+
 app.post("/api/v1/members", requireAuth, asyncRoute(async (req, res) => {
   const body = z.object({ tenantId: z.string().max(64).optional(), name: z.string().trim().min(1).max(100), email: z.string().email().max(180), password: z.string().min(8).max(200), roleId: z.string().min(1).max(90), reason: z.string().max(500).optional() }).parse(req.body);
   await sendIamMutation(req, res, "member.create", body);
@@ -3835,6 +3882,22 @@ app.post("/api/platform/v1/tenants", requireAuth, asyncRoute(async (req, res) =>
     reason: z.string().trim().min(2).max(500).optional()
   }).parse(req.body);
   await sendPlatformAction(res, () => service.createTenant(req.user!, body, platformMutationContext(req)), "公司创建失败");
+}));
+
+app.post("/api/platform/v1/tenants/:id/quick-admin", requireAuth, asyncRoute(async (req, res) => {
+  const service = platformServiceOrFail(res); if (!service) return;
+  const body = z.object({ name: z.string().trim().min(1).max(100), email: z.string().trim().email().max(180).optional() }).parse(req.body);
+  const credentials = generateAccountCredentials();
+  if (body.email) credentials.email = body.email.toLowerCase();
+  try {
+    const result = await service.bootstrapTenantAdmin(req.user!, req.params.id, { ...body, ...credentials, mustChangePassword: true, reason: "管理员一键开户" }, platformMutationContext(req));
+    await getStore().reloadIamUsers?.();
+    res.setHeader("Cache-Control", "no-store");
+    res.status(201).json({ ...result, credentials });
+  } catch (error) {
+    const status = typeof error === "object" && error && "status" in error ? Number(error.status) : 500;
+    res.status(status >= 400 && status < 500 ? status : 500).json({ message: status >= 400 && status < 500 && error instanceof Error ? error.message : "开户失败，请刷新公司列表确认结果" });
+  }
 }));
 
 app.post("/api/platform/v1/tenants/:id/bootstrap-admin", requireAuth, asyncRoute(async (req, res) => {

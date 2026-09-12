@@ -252,6 +252,7 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
         if (!root || !role) fail(409, "公司组织或管理员角色尚未初始化");
         const userId = id("user").slice(0, 64); const membershipId = id("mem");
         await connection.query(`INSERT INTO users (id, name, email, password_hash, role, team_id, avatar, status, auth_version) VALUES (?, ?, ?, ?, 'admin', ?, ?, 'active', 1)`, [userId, name, email, await hashPassword(password), tenantId, name.slice(0, 2).toUpperCase()]);
+        if (input.mustChangePassword === true) await connection.query(`UPDATE users SET must_change_password = TRUE WHERE id = ?`, [userId]);
         await connection.query(`INSERT INTO tenant_memberships (id, tenant_id, user_id, status, primary_org_unit_id, membership_auth_version, joined_at, invited_by, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, 1, NOW(3), ?, NOW(3), NOW(3))`, [membershipId, tenantId, userId, root.id, operatorId]);
         await connection.query(`INSERT INTO organization_memberships (id, tenant_id, membership_id, org_unit_id, relation_type, valid_from, created_by, created_at) VALUES (?, ?, ?, ?, 'primary', NOW(3), ?, NOW(3))`, [id("om"), tenantId, membershipId, root.id, operatorId]);
         await connection.query(`INSERT INTO member_role_assignments (id, tenant_id, membership_id, role_id, scope_anchor_org_unit_id, status, reason, granted_by, created_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, NOW(3))`, [id("mra"), tenantId, membershipId, role.id, root.id, reason, operatorId]);

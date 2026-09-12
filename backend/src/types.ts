@@ -297,6 +297,7 @@ export interface User {
   avatar: string;
   status: "active" | "disabled";
   authVersion?: number;
+  mustChangePassword?: boolean;
   outboundEmail?: string;
   emailSenderName?: string;
   emailSignature?: string;

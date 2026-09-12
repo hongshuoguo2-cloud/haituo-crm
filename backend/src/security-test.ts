@@ -145,14 +145,14 @@ try {
   await expectStatus("oversized JSON", oversizedJson.response.status, 413);
   results.oversizedJson = oversizedJson.response.status;
 
-  const malformedCookie = await request("/api/auth/me", { headers: { cookie: "gj_session=%E0%A4%A" } });
+  const malformedCookie = await request("/api/auth/me", { headers: { cookie: "ht_session=%E0%A4%A" } });
   await expectStatus("malformed cookie", malformedCookie.response.status, 401);
   results.malformedCookie = malformedCookie.response.status;
 
   const shirley = await login("shirley@goodjob.com", "goodjob123");
-  const csrf = cookieValue(shirley.cookies, "gj_csrf");
+  const csrf = cookieValue(shirley.cookies, "ht_csrf");
   const setCookies = shirley.response.headers.getSetCookie().join("\n");
-  if (!/gj_session=.*HttpOnly/i.test(setCookies) || !/SameSite=Strict/i.test(setCookies) || !csrf) {
+  if (!/ht_session=.*HttpOnly/i.test(setCookies) || !/SameSite=Strict/i.test(setCookies) || !csrf) {
     throw new Error("session cookie security attributes missing");
   }
 

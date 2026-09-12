@@ -1,6 +1,6 @@
 {
-  "name": "goodjob-crm",
-  "version": "0.1.0",
+  "name": "haituo-crm",
+  "version": "0.1.1",
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
@@ -18,7 +18,9 @@
     "svn:check-database": "node scripts/check-database-safety.mjs",
     "build": "npm run build --workspace @goodjob/integration-connector-sdk && npm run build --workspace backend && npm run build --workspace frontend && npm run build --workspace integration-worker && npm run build --workspace @goodjob/local-runner && npm --prefix whatsapp-plugin run build",
     "test": "npm run test --workspace @goodjob/integration-connector-sdk && npm run test --workspace backend && npm run test --workspace frontend && npm run test --workspace integration-worker && npm run test --workspace @goodjob/local-runner && npm --prefix whatsapp-plugin test",
-    "test:e2e": "npm run test:e2e --workspace frontend"
+    "test:e2e": "npm run test:e2e --workspace frontend",
+    "release:cloud:prepare": "node scripts/prepare-haituo-cloud-release.mjs",
+    "test:release:cloud": "node scripts/test-haituo-cloud-release.mjs"
   },
   "workspaces": [
     "backend",

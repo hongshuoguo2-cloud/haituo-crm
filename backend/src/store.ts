@@ -412,6 +412,7 @@ export interface CrmStore {
   platformMfa?: PlatformMfaService;
   approvalOperations?: ApprovalService;
   reloadIamUsers?(): Promise<void>;
+  changeInitialPassword?(userId: string, authVersion: number, passwordHash: string): Promise<boolean>;
   close?(): Promise<void>;
 }
 

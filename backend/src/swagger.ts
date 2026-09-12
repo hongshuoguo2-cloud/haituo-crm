@@ -2814,14 +2814,14 @@ export function createOpenApiDocument(app: Application) {
         cookieAuth: {
           type: "apiKey",
           in: "cookie",
-          name: "gj_session",
+          name: "ht_session",
           description: "CRM 登录后由浏览器自动携带的 HttpOnly 会话 Cookie。"
         },
         csrfToken: {
           type: "apiKey",
           in: "header",
           name: "X-CSRF-Token",
-          description: "Cookie 会话执行写操作时需要；Swagger UI 会从 gj_csrf Cookie 自动附加。"
+          description: "Cookie 会话执行写操作时需要；Swagger UI 会从 ht_csrf Cookie 自动附加。"
         },
         twilioSignature: {
           type: "apiKey",
@@ -3143,8 +3143,8 @@ const swaggerOptions = {
       if (!["GET", "HEAD", "OPTIONS"].includes(String(request.method || "").toUpperCase())) {
         const csrfCookie = document.cookie
           .split("; ")
-          .find((item) => item.startsWith("gj_csrf="))
-          ?.slice("gj_csrf=".length);
+          .find((item) => item.startsWith("ht_csrf="))
+          ?.slice("ht_csrf=".length);
         if (csrfCookie) {
           request.headers ||= {};
           request.headers["X-CSRF-Token"] = decodeURIComponent(csrfCookie);

@@ -17,6 +17,8 @@ dist-packages/
 
 # Local build/runtime artifacts and packaged binaries
 .build-windows-portable/
+.release/
+.haituo-release-test-*/
 .runtime-cache/
 .cache/
 .vite/

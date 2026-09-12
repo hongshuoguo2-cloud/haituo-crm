@@ -12,21 +12,21 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5193,
+    port: 5293,
     strictPort: true,
     proxy: {
       "/api/customers": {
-        target: "http://127.0.0.1:4188"
+        target: "http://127.0.0.1:4288"
       },
       "/api/todos": {
-        target: "http://127.0.0.1:4188"
+        target: "http://127.0.0.1:4288"
       },
       "/whatsapp-plugin/api": {
-        target: "http://127.0.0.1:3100",
+        target: "http://127.0.0.1:3200",
         rewrite: (requestPath) => requestPath.replace(/^\/whatsapp-plugin\/api/u, "/api")
       },
       "/whatsapp-plugin/socket.io": {
-        target: "http://127.0.0.1:3100",
+        target: "http://127.0.0.1:3200",
         ws: true,
         rewrite: (requestPath) => requestPath.replace(/^\/whatsapp-plugin\/socket\.io/u, "/socket.io")
       }

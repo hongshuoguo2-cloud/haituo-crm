@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GoodJob CRM 外贸客户管理原型</title>
+  <title>海拓 CRM 外贸客户管理原型</title>
   <style>
     :root {
       --bg: #f2f6f5;
@@ -22041,9 +22041,9 @@
             .prospect-radar-stage *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
           }
         </style>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+
+
 <style id="redesign-styles">
 /* ===== 产品维护 / 发货管理 重设计（编辑式贸易目录美学） ===== */
 #products, #shipments {
@@ -23257,21 +23257,35 @@ body.platform-mode .workspace-tabs { display:none !important; }
     @media(max-width:1180px){.file-center-layout{grid-template-columns:190px minmax(390px,1fr)}.file-detail-panel{position:static;grid-column:1/-1}.file-detail-empty{min-height:130px}}
     @media(max-width:780px){.file-center-head{align-items:flex-start;flex-direction:column}.file-center-head .head-actions{width:100%}.file-center-head .btn{flex:1}.file-center-metrics{grid-template-columns:1fr 1fr}.file-center-metrics>div:nth-child(2){border-right:0}.file-center-metrics>div:nth-child(-n+2){border-bottom:1px solid var(--fc-line)}.file-center-toolbar{grid-template-columns:1fr 1fr}.file-center-toolbar input{grid-column:1/-1}.file-center-layout{grid-template-columns:1fr}.file-category-panel{overflow:auto}.file-category-list{display:flex}.file-category-list button{min-width:130px}.file-detail-panel{grid-column:auto}.file-table-head{display:none}.file-table-row{grid-template-columns:minmax(0,1fr) auto}.file-table-row>.file-table-cell:nth-child(2){grid-column:1}.file-table-row>.file-table-cell:nth-child(3){grid-area:1/2}.file-table-row>.file-table-cell:last-child{grid-column:2}.file-source-choice{grid-template-columns:1fr}}
   </style>
-</head>
+<link rel="icon" type="image/svg+xml" href="/haituo.svg"><style>
+ .login-screen{background:#f3f7fa}.login-visual{background:linear-gradient(145deg,#082e43,#0c5a70 65%,#167d83)}
+ .login-copy h1{letter-spacing:.12em}.login-brand span{letter-spacing:.18em}.login-brand-mark{background:#15b8a6}
+ .login-panel-status{color:#0a776e}.haituo-access-note{padding:18px 20px;margin:20px 0;background:#f0f8f8;border:1px solid #d5e9e7;border-radius:12px}
+ .haituo-access-note b{color:#145b63;font-size:14px}.haituo-access-note p{font-size:13px;line-height:1.8;margin:8px 0;color:#536b78}.haituo-access-note span{font-size:11px;color:#637f89}
+ .login-signature{letter-spacing:.2em}.haituo-attribution{display:block;font-size:10px;color:#70828d;margin-top:12px;line-height:1.6}
+ </style><style>#loginButton{background:#087d82;box-shadow:0 10px 28px #087d8226}#loginButton:hover{background:#066a72}.login-brand-mark::before,.login-brand-mark::after{border-color:#8bf5de}.login-signature{color:#607c85}</style><style>
+ .haituo-balance-panel{padding:28px;margin:20px 0;border:1px solid var(--border,#dce7e9);border-radius:18px;background:var(--surface,#fff)}
+ .haituo-balance-panel p{color:var(--muted,#61717d);margin:14px 0;line-height:1.7}
+ .haituo-balance-panel strong{display:block;font-size:48px;margin:12px 0;color:var(--text,#173c46)}
+ .haituo-balance-status{display:inline-block;padding:6px 12px;border-radius:20px;background:#e4f4f1;color:#087d82;font-size:13px}
+ .haituo-balance-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+ .haituo-balance-grid .haituo-balance-panel{margin-top:0}.haituo-balance-panel .btn:disabled{opacity:.55;cursor:not-allowed}
+ #haituoAccountInfo{width:100%;line-height:1.8;min-height:170px}
+</style></head>
 <body>
   <section class="login-screen" aria-label="登录">
     <div class="login-visual">
-      <div class="login-brand" aria-label="GoodJob AI Growth System">
+      <div class="login-brand" aria-label="海拓 外贸客户工作台">
         <div class="login-brand-mark" aria-hidden="true"></div>
         <div>
-          <strong>GoodJob</strong>
-          <span>AI Growth System</span>
+          <strong>海拓</strong>
+          <span>外贸客户工作台</span>
         </div>
       </div>
       <div class="login-visual-content">
         <div class="login-copy">
-          <h1>GoodJob</h1>
-          <p>AI-powered growth starts here.</p>
+          <h1>海拓</h1>
+          <p>发现海外商机，连接全球客户。</p>
         </div>
         <div class="growth-system" role="img" aria-label="AI Agent 持续连接自动获客、客户关系与商机推进">
           <div class="growth-orbit" aria-hidden="true"></div>
@@ -23281,45 +23295,33 @@ body.platform-mode .workspace-tabs { display:none !important; }
           <div class="growth-signal leads" aria-hidden="true"></div>
           <div class="growth-signal customers" aria-hidden="true"></div>
           <div class="growth-signal opportunities" aria-hidden="true"></div>
-          <div class="ai-core"><strong>AI Agent</strong><span>Always working</span></div>
+          <div class="ai-core"><strong>AI Agent</strong><span>你的业务助手</span></div>
         </div>
       </div>
     </div>
     <div class="login-panel">
       <div class="login-panel-head">
-        <h2>Welcome back.</h2>
+        <h2>欢迎来到海拓</h2>
         <span class="login-panel-status">安全工作区</span>
       </div>
-      <p>登录 GoodJob，继续推进你的客户增长。</p>
+      <p>登录海拓，继续推进你的客户增长。</p>
       <div class="login-field"><label>账号</label><input id="loginEmail" placeholder="请输入登录邮箱" autocomplete="username"></div>
       <div class="login-field"><label>密码</label><input id="loginPassword" type="password" placeholder="请输入密码" autocomplete="current-password"></div>
-      <div class="login-demo" id="loginDemoAccounts" aria-label="演示账号快速登录">
-        <div class="login-demo-head">
-          <span class="login-demo-title">演示账号</span>
-          <span class="login-demo-pass">统一密码 <code>goodjob123</code></span>
-        </div>
-        <div class="login-demo-list">
-          <button type="button" class="login-demo-item" data-demo-email="super@goodjob.com"><b>超级管理员</b><i>super</i></button>
-          <button type="button" class="login-demo-item" data-demo-email="admin@goodjob.com"><b>管理员</b><i>admin</i></button>
-          <button type="button" class="login-demo-item" data-demo-email="alex@goodjob.com"><b>销售主管</b><i>alex</i></button>
-          <button type="button" class="login-demo-item" data-demo-email="shirley@goodjob.com"><b>销售</b><i>shirley</i></button>
-          <button type="button" class="login-demo-item" data-demo-email="mia@goodjob.com"><b>销售</b><i>mia</i></button>
-        </div>
-        <div class="login-demo-tip">点击填充账号密码，双击直接登录</div>
-      </div>
-      <button class="btn primary" id="loginButton">Enter GoodJob</button>
-      <div class="login-product-version" id="loginProductVersion" aria-label="产品版本">GoodJob CRM · 正在读取版本</div>
+      <div class="haituo-access-note"><b>管理员邀请使用</b><p>请使用管理员为你开通的账号登录。需要体验账号或重置密码，请联系管理员。</p><span>独立演示环境 · 外部服务需单独配置</span></div>
+      <button class="btn primary" id="loginButton">登录海拓</button>
+      <a class="haituo-attribution" href="/open-source-notices.html" target="_blank" rel="noopener">开源说明与项目归属</a>
+      <div class="login-product-version" id="loginProductVersion" aria-label="产品版本">海拓 CRM · 正在读取版本</div>
     </div>
-    <span class="login-signature" aria-hidden="true">kevin</span>
+    <span class="login-signature">HAITUO · 演示版</span>
   </section>
 
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true"><span>G</span><span>J</span></div>
+        <div class="brand-mark" aria-hidden="true"><span>H</span><span>T</span></div>
         <div>
-          <strong>GoodJob CRM</strong>
-          <span>外贸客户增长中台</span>
+          <strong>海拓 CRM</strong>
+          <span>外贸客户工作台 · 演示版</span>
         </div>
       </div>
 
@@ -23417,6 +23419,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
           <summary class="nav-section-title"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-.4-1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06A2 2 0 1 1 7.13 3.4l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 .4 1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.17.37.38.7.6 1 .27.26.62.4 1 .4h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1 .4 1.7 1.7 0 0 0-.6 1z"/></svg><span>系统配置</span><i class="nav-chevron"></i></summary>
           <div class="nav-secondary-grid">
             <button class="nav-secondary-button" data-view="database-maintenance" data-scope="admin" title="数据库维护"><span>数据库维护</span></button>
+            <button class="nav-secondary-button" data-view="api-balance" title="API 余额"><span>API 余额</span></button>
             <button class="nav-secondary-button" data-view="ai-config" title="AI配置"><span>AI配置</span></button>
             <button class="nav-secondary-button" data-view="logs" title="系统日志"><span>系统日志</span></button>
             <button class="nav-secondary-button" data-view="theme" title="外观主题"><span>外观主题</span></button>
@@ -24124,7 +24127,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
         <div class="view" id="ai-agent">
           <div class="agent-chat-shell">
             <aside class="agent-chat-sidebar">
-              <div class="agent-chat-brand"><span>AI</span><div><b>GoodJob Agent</b><small>业务执行助手</small></div></div>
+              <div class="agent-chat-brand"><span>AI</span><div><b>海拓 Agent</b><small>业务执行助手</small></div></div>
               <button class="agent-new-conversation" id="agentNewPlanButton" type="button"><i>+</i><span>新对话</span></button>
               <div class="agent-chat-side-title">对话</div>
               <div class="agent-conversation-list" id="agentConversationList"><div class="agent-conversation-empty">暂无历史对话</div></div>
@@ -24146,7 +24149,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
               </details>
             </aside>
             <section class="agent-chat-main">
-              <header><div><span class="agent-online-dot"></span><div><b>GoodJob Agent</b><small>说出目标，我会持续执行到得到结果</small></div></div><div id="agentRunStatus"></div></header>
+              <header><div><span class="agent-online-dot"></span><div><b>海拓 Agent</b><small>说出目标，我会持续执行到得到结果</small></div></div><div id="agentRunStatus"></div></header>
               <div class="agent-chat-messages" id="agentChatMessages"><div class="agent-chat-welcome"><span>AI</span><div><h2>今天想推进什么？</h2></div></div></div>
               <div class="agent-chat-composer">
                 <textarea class="agent-goal" id="agentGoalInput" placeholder="告诉我你最终想完成什么"></textarea>
@@ -24359,7 +24362,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
 
             <section class="integration-tab-panel" data-integration-panel="local-runner" hidden>
               <div class="local-runner-head">
-                <div><h2>GoodJob Runner</h2><p>让网页安全调用本机 Codex CLI，任务过程与结果自动回到 CRM。</p></div>
+                <div><h2>海拓 Runner</h2><p>让网页安全调用本机 Codex CLI，任务过程与结果自动回到 CRM。</p></div>
                 <button class="btn primary" id="localRunnerPairButton" type="button" data-permission="integration.connect">配对设备</button>
               </div>
               <div class="local-runner-summary" aria-label="Runner 状态概览">
@@ -26333,7 +26336,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
             <section class="panel report-hero">
               <div class="report-hero-top">
                 <small id="reportPeriod">正在读取统计期间</small>
-                <small id="reportGeneratedAt">GoodJob CRM · 正在生成</small>
+                <small id="reportGeneratedAt">海拓 CRM · 正在生成</small>
               </div>
               <h2 id="reportHeadline">正在加载实时经营快照...</h2>
               <p id="reportHeroNote"></p>
@@ -26943,6 +26946,17 @@ body.platform-mode .workspace-tabs { display:none !important; }
           </div>
         </div>
 
+        <div class="view" id="api-balance">
+          <div class="page-head"><div><h1>API 余额</h1><p>海拓模型服务的余额与用量</p></div></div>
+          <section class="haituo-balance-panel">
+            <span class="haituo-balance-status">计费服务尚未接入</span>
+            <p>可用余额</p><strong aria-label="余额暂不可用">—</strong>
+            <p>接入后可在这里查看余额、充值记录和模型调用用量。</p>
+            <button class="btn primary" type="button" disabled>充值（待接入）</button>
+          </section>
+          <div class="haituo-balance-grid"><section class="haituo-balance-panel"><h2>用量记录</h2><p>暂无可展示的计费用量。</p></section><section class="haituo-balance-panel"><h2>充值记录</h2><p>充值服务接入后显示。</p></section></div>
+        </div>
+
         <div class="view" id="profile">
           <div class="page-head">
             <div><h1>个人主页</h1></div>
@@ -27101,7 +27115,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
           <div class="view" id="platform-operations">
             <div class="platform-page">
               <header class="platform-head">
-                <div class="platform-head-row"><div><h1>GoodJob 平台运维</h1><p>公司生命周期、支持访问与系统安全运行</p></div><div class="platform-environment"><i></i><span>生产控制域</span></div></div>
+                <div class="platform-head-row"><div><h1>海拓 平台运维</h1><p>公司生命周期、支持访问与系统安全运行</p></div><div class="platform-environment"><i></i><span>生产控制域</span></div></div>
                 <nav class="platform-tabs" id="platformTabs" aria-label="平台运维模块">
                   <button type="button" class="active" data-platform-tab="overview">平台概览</button>
                   <button type="button" data-platform-tab="tenants">公司管理</button>
@@ -27669,6 +27683,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
       "database-maintenance": "数据库维护",
       "ai-config": "AI配置",
       settings: "系统设置",
+      "api-balance": "API 余额",
       profile: "个人设置"
     };
     let openTabs = ["dashboard"];

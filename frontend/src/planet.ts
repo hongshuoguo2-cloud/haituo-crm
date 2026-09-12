@@ -135,7 +135,7 @@ export function mountPlanet(planetView: HTMLElement, opts: PlanetMountOptions) {
   const root = new THREE.Group();
   scene.add(root);
 
-  // 中心 GoodJob 发光球 + 光晕
+  // 中心 海拓 发光球 + 光晕
   const coreGeo = new THREE.SphereGeometry(1.5, 48, 48);
   const coreMat = new THREE.MeshStandardMaterial({ color: 0x534AB7, emissive: 0x534AB7, emissiveIntensity: 0.7, roughness: 0.4 });
   const core = new THREE.Mesh(coreGeo, coreMat);
@@ -143,7 +143,7 @@ export function mountPlanet(planetView: HTMLElement, opts: PlanetMountOptions) {
   const haloGeo = new THREE.SphereGeometry(2.1, 48, 48);
   const haloMat = new THREE.MeshBasicMaterial({ color: 0x7F77DD, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending });
   root.add(new THREE.Mesh(haloGeo, haloMat));
-  const coreLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeLabelTexture("GoodJob", 0xAFA9EC), transparent: true }));
+  const coreLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeLabelTexture("海拓", 0xAFA9EC), transparent: true }));
   coreLabel.scale.set(3, 0.75, 1);
   coreLabel.position.set(0, -2.6, 0);
   root.add(coreLabel);

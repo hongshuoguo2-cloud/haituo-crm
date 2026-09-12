@@ -17,7 +17,7 @@ async function apiFromPage<T>(
     const method = requestInit.method || "GET";
     const csrfToken = document.cookie
       .split("; ")
-      .find((part) => part.startsWith("gj_csrf="))
+      .find((part) => part.startsWith("ht_csrf="))
       ?.split("=")
       .slice(1)
       .join("=");

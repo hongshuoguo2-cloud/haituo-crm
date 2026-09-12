@@ -3600,7 +3600,8 @@ const viewLabels: Record<string, string> = {
   "permission-audit": "权限审计",
   "platform-operations": "平台运维",
   settings: "系统设置",
-  profile: "个人设置"
+  profile: "个人设置",
+  "api-balance": "API 余额"
 };
 
 const aiProviderPresets: Record<string, {
@@ -3640,7 +3641,7 @@ const storage = {
   workspaceView: "gj_workspace_view"
 };
 
-const DEMO_ACCOUNT_PASSWORD = "goodjob123";
+
 
 function newAgentConversationId() {
   return `agc_${crypto.randomUUID()}`;
@@ -5613,7 +5614,7 @@ async function streamAgentPlan(
   context: Record<string, unknown>,
   onProgress: (progress: AgentPlanningProgress) => void
 ): Promise<{ run: AgentRun }> {
-  const csrfToken = cookieValue("gj_csrf");
+  const csrfToken = cookieValue("ht_csrf");
   const response = await fetch("/api/agent/plan/stream", {
     method: "POST",
     credentials: "same-origin",
@@ -5846,7 +5847,7 @@ document.addEventListener("keydown", (event) => {
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || "GET").toUpperCase();
-  const csrfToken = cookieValue("gj_csrf");
+  const csrfToken = cookieValue("ht_csrf");
   const response = await fetch(path, {
     ...init,
     credentials: "same-origin",
@@ -5912,11 +5913,36 @@ function openMfaChallenge(email: string, challengeId: string) {
   })().catch((error) => toast(error instanceof Error ? error.message : "安全验证失败", "error")));
 }
 
+function openInitialPasswordChange(changeToken: string, email: string) {
+  openModal("设置你的登录密码", `<p>这是临时密码登录。请先设置自己的密码，再进入海拓。</p><div class="form-grid">
+    <div class="form-field full"><label for="haituoNewPassword">新密码（12～128 位）</label><input id="haituoNewPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password"></div>
+    <div class="form-field full"><label for="haituoConfirmPassword">再次输入新密码</label><input id="haituoConfirmPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password"></div>
+    </div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="haituoSavePassword">设置密码并登录</button>`);
+  qs<HTMLInputElement>("#haituoNewPassword")?.focus();
+  const button = qs<HTMLButtonElement>("#haituoSavePassword")!;
+  button.addEventListener("click", () => void (async () => {
+    const password = qs<HTMLInputElement>("#haituoNewPassword")?.value || "";
+    if (password.length < 12 || password.length > 128) { toast("请输入 12～128 位密码", "error"); return; }
+    if (password !== qs<HTMLInputElement>("#haituoConfirmPassword")?.value) { toast("两次密码不一致", "error"); return; }
+    button.disabled = true;
+    try {
+      await api("/api/auth/initial-password", { method: "POST", body: JSON.stringify({ changeToken, password }) });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "密码设置失败", "error"); button.disabled = false; return;
+    }
+    closeModal();
+    const loginPassword = qs<HTMLInputElement>("#loginPassword"); if (loginPassword) loginPassword.value = "";
+    try { await loginWithPassword(email, password); }
+    catch { toast("密码已设置，请用新密码重新登录", "error"); }
+  })());
+}
+
 async function loginWithPassword(email: string, password: string) {
-  const result = await api<{ user?: User; mfaRequired?: boolean; mfaSetupRequired?: boolean; setupToken?: string; challengeId?: string; email?: string }>("/api/auth/login", {
+  const result = await api<{ user?: User; passwordChangeRequired?: boolean; changeToken?: string; mfaRequired?: boolean; mfaSetupRequired?: boolean; setupToken?: string; challengeId?: string; email?: string }>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password })
   });
+  if (result.passwordChangeRequired && result.changeToken) { openInitialPasswordChange(result.changeToken, email); return; }
   if (result.mfaSetupRequired && result.setupToken) { await openMfaEnrollment(result.setupToken); return; }
   if (result.mfaRequired && result.challengeId) { openMfaChallenge(result.email || email, result.challengeId); return; }
   if (!result.user) throw new Error("登录响应缺少用户信息");
@@ -6003,6 +6029,7 @@ function hasIamCapability(permissionCode: string) {
 
 function canAccessWorkspaceView(view: string, user = state.user) {
   if (!user) return false;
+  if (view === "api-balance") return true;
   if (state.iamCapabilities?.source === "platform") {
     if (isAccessControlView(view) && user.role === "super_admin") {
       return view === "permission-audit"
@@ -6161,7 +6188,7 @@ function renderProfile(user = state.user) {
 }
 
 function collectDevelopmentEmailDraft() {
-  const sender = qs<HTMLInputElement>("#profileSenderName")?.value.trim() || state.user?.name || "GoodJob Sales";
+  const sender = qs<HTMLInputElement>("#profileSenderName")?.value.trim() || state.user?.name || "海拓 Sales";
   const from = qs<HTMLInputElement>("#profileOutboundEmail")?.value.trim() || state.user?.outboundEmail || "";
   const signature = qs<HTMLTextAreaElement>("#profileEmailSignature")?.value.trim() || "";
   return {
@@ -6177,7 +6204,7 @@ function collectDevelopmentEmailDraft() {
 
 function generateDevelopmentEmailDraft() {
   const company = qs<HTMLInputElement>("#devEmailCompany")?.value.trim() || "your company";
-  const sender = qs<HTMLInputElement>("#profileSenderName")?.value.trim() || state.user?.name || "GoodJob Sales";
+  const sender = qs<HTMLInputElement>("#profileSenderName")?.value.trim() || state.user?.name || "海拓 Sales";
   const signature = qs<HTMLTextAreaElement>("#profileEmailSignature")?.value.trim() || `Best regards,\n${sender}`;
   const body = [
     `Dear ${company} team,`,
@@ -6955,8 +6982,10 @@ function openPlatformTenantCreator() {
 }
 
 function openPlatformTenantAdminCreator(tenantId: string) {
-  openModal("设置公司管理员", `<div class="form-grid"><div class="form-field"><label>管理员姓名</label><input id="platformAdminName" maxlength="100"></div><div class="form-field"><label>登录邮箱</label><input id="platformAdminEmail" type="email" maxlength="180"></div><div class="form-field full"><label>初始密码</label><input id="platformAdminPassword" type="password" minlength="12" maxlength="200" autocomplete="new-password"></div><div class="form-field full"><label>设置原因</label><textarea id="platformAdminReason" maxlength="500">公司管理员初始化</textarea></div></div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="platformAdminSave">确认设置</button>`);
-  qs("#platformAdminSave")?.addEventListener("click", () => void runPlatformMutation(() => api(`/api/platform/v1/tenants/${encodeURIComponent(tenantId)}/bootstrap-admin`, { method: "POST", body: JSON.stringify({ name: qs<HTMLInputElement>("#platformAdminName")?.value.trim(), email: qs<HTMLInputElement>("#platformAdminEmail")?.value.trim(), password: qs<HTMLInputElement>("#platformAdminPassword")?.value || "", reason: qs<HTMLTextAreaElement>("#platformAdminReason")?.value.trim() }) }), "公司管理员已设置"));
+  openHaituoAccountCreator({
+    submit: (input) => api(`/api/platform/v1/tenants/${encodeURIComponent(tenantId)}/quick-admin`, { method: "POST", body: JSON.stringify(input) }),
+    refresh: async () => { await refreshPlatformOperations(); }
+  });
 }
 
 function openPlatformSupportCreator() {
@@ -10592,7 +10621,7 @@ function launchCustomerContact(customer: Customer, channel: "email" | "phone" | 
       openCustomerModal(customer);
       return;
     }
-    window.location.href = `mailto:${contacts.email}?subject=${encodeURIComponent(`GoodJob CRM · ${customer.company}`)}`;
+    window.location.href = `mailto:${contacts.email}?subject=${encodeURIComponent(`海拓 CRM · ${customer.company}`)}`;
     return;
   }
   if (channel === "phone") {
@@ -10767,7 +10796,7 @@ async function createCustomerCommunicationTodo(customer: Customer, followup: Wha
     });
     if (!state.todos.some((todo) => todo.id === result.todo.id)) state.todos.unshift(result.todo);
     button.textContent = "已加入待办";
-    toast("已加入 GoodJob 待办");
+    toast("已加入 海拓 待办");
   } catch (error) {
     button.disabled = false;
     button.textContent = "转为待办";
@@ -10807,13 +10836,13 @@ async function loadCustomerCommunicationInsights(customer: Customer) {
         <div><h3>客户特点</h3><div class="communication-traits">${analysis.traits.length ? analysis.traits.map((trait) => `<span><b>${escapeHtml(trait.label)}</b><small>${escapeHtml(trait.value || "已识别")} · ${Math.round(trait.confidence * 100)}% 可信 · ${trait.evidenceMessageIds.length} 条证据</small></span>`).join("") : `<span class="is-empty">当前会话证据不足</span>`}</div></div>
         <div><h3>关键决策信号</h3><div class="communication-points">${analysis.keyPoints.length ? analysis.keyPoints.map((point) => `<span><i>✓</i>${escapeHtml(point)}</span>`).join("") : `<span>尚未提取到明确采购信号</span>`}</div></div>
       </div>` : `<div class="communication-insight-empty"><b>客户画像正在等待首次分析</b><span>周期分析任务会自动生成客户特点、风险和跟进建议。</span></div>`}
-      <div class="communication-followup-block"><div class="communication-block-head"><div><h3>最近要跟进的事项</h3><p>即刻沟通建议与 GoodJob 待办统一呈现</p></div><b>${pending.length + unmatchedLinkedTodos.length}</b></div><div class="communication-followups">
+      <div class="communication-followup-block"><div class="communication-block-head"><div><h3>最近要跟进的事项</h3><p>即刻沟通建议与 海拓 待办统一呈现</p></div><b>${pending.length + unmatchedLinkedTodos.length}</b></div><div class="communication-followups">
         ${pending.map((item) => {
           const linkedTodo = relatedTodos.find((todo) => todoMatchesCommunicationFollowup(todo, customer, item));
           const buttonLabel = linkedTodo ? (linkedTodo.done ? "待办已完成" : "已加入待办") : "转为待办";
-          return `<article class="priority-${item.priority}${linkedTodo ? " is-crm-todo" : ""}"><i></i><div><b>${escapeHtml(item.title)}</b><span>${escapeHtml(communicationDueLabel(item.dueAt))}</span><p>${escapeHtml(linkedTodo ? (linkedTodo.done ? "关联待办已完成" : "已进入 GoodJob 待办") : item.reason)}</p></div><button class="btn" type="button" data-communication-todo="${escapeHtml(item.id)}"${linkedTodo ? " disabled" : ""}>${buttonLabel}</button></article>`;
+          return `<article class="priority-${item.priority}${linkedTodo ? " is-crm-todo" : ""}"><i></i><div><b>${escapeHtml(item.title)}</b><span>${escapeHtml(communicationDueLabel(item.dueAt))}</span><p>${escapeHtml(linkedTodo ? (linkedTodo.done ? "关联待办已完成" : "已进入 海拓 待办") : item.reason)}</p></div><button class="btn" type="button" data-communication-todo="${escapeHtml(item.id)}"${linkedTodo ? " disabled" : ""}>${buttonLabel}</button></article>`;
         }).join("")}
-        ${unmatchedLinkedTodos.slice(0, 4).map((todo) => `<article class="is-crm-todo"><i></i><div><b>${escapeHtml(todo.title)}</b><span>${escapeHtml(communicationDueLabel(todo.dueAt))}</span><p>已进入 GoodJob 待办</p></div><em>CRM</em></article>`).join("")}
+        ${unmatchedLinkedTodos.slice(0, 4).map((todo) => `<article class="is-crm-todo"><i></i><div><b>${escapeHtml(todo.title)}</b><span>${escapeHtml(communicationDueLabel(todo.dueAt))}</span><p>已进入 海拓 待办</p></div><em>CRM</em></article>`).join("")}
         ${pending.length + unmatchedLinkedTodos.length === 0 ? `<div class="communication-insight-empty compact"><b>暂无未完成事项</b><span>新消息完成分析后，行动建议会自动出现。</span></div>` : ""}
       </div></div>`;
     qsa<HTMLButtonElement>("[data-communication-todo]", box).forEach((button) => {
@@ -11122,7 +11151,7 @@ async function createCustomerMeetingTodo(customer: Customer, activityId: string,
     }
     updateTodoChips(state.todos);
     renderTopbarStats();
-    toast("会前准备已加入 GoodJob 待办");
+    toast("会前准备已加入 海拓 待办");
   } catch (error) {
     setButtonPending(button, false, "生成会前待办", "创建中");
     toast(error instanceof Error ? error.message : "会前待办创建失败", "error");
@@ -12404,7 +12433,7 @@ function openCustomsDocumentModal(customsDoc: CustomsDocument, customer: Custome
 async function exportCustomsDocument(customsDoc: CustomsDocument) {
   try {
     toast("正在生成 Excel 文件...");
-    const csrfToken = cookieValue("gj_csrf");
+    const csrfToken = cookieValue("ht_csrf");
 
     const response = await fetch("/api/customs-documents/export", {
       method: "POST",
@@ -13860,7 +13889,7 @@ async function exportCommission() {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, summarySheet, "人员月度汇总");
   XLSX.utils.book_append_sheet(workbook, detailSheet, "逐笔计提明细");
-  XLSX.writeFile(workbook, `GoodJob-提成对账-${state.commissionMonth}.xlsx`);
+  XLSX.writeFile(workbook, `海拓-提成对账-${state.commissionMonth}.xlsx`);
   toast(`已导出 ${result.exportJob.rows} 行提成对账数据`);
 }
 
@@ -15548,7 +15577,7 @@ function openTradeDocumentImport() {
     if (!file) return;
     setButtonPending(button, true, "开始分析", "解析中");
     try {
-      const response = await fetch("/api/trade-document-imports/analyze", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/octet-stream", "x-file-name": encodeURIComponent(file.name), "x-file-type": file.type || "application/octet-stream", ...(cookieValue("gj_csrf") ? { "x-csrf-token": cookieValue("gj_csrf") } : {}) }, body: await file.arrayBuffer() });
+      const response = await fetch("/api/trade-document-imports/analyze", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/octet-stream", "x-file-name": encodeURIComponent(file.name), "x-file-type": file.type || "application/octet-stream", ...(cookieValue("ht_csrf") ? { "x-csrf-token": cookieValue("ht_csrf") } : {}) }, body: await file.arrayBuffer() });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || "单据分析失败");
       closeModal();
@@ -17008,7 +17037,7 @@ async function exportCustomers() {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "客户清单");
-    XLSX.writeFile(workbook, `GoodJob客户清单-${Date.now()}.xlsx`);
+    XLSX.writeFile(workbook, `海拓客户清单-${Date.now()}.xlsx`);
     state.jobs.unshift(result.job);
     renderJobs(state.jobs);
     toast(`客户已导出：${rows.length} 行`);
@@ -17021,7 +17050,7 @@ function downloadCustomerTemplate() {
   const worksheet = XLSX.utils.aoa_to_sheet([["客户ID", "公司简称", "公司全名", "国家", "联系人", "电话", "邮箱", "联系方式备注（其它渠道）", "官网", "客户来源", "成交状态", "阶段", "预计金额", "健康度", "下一提醒"]]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "客户导入模板");
-  XLSX.writeFile(workbook, "GoodJob客户导入模板.xlsx");
+  XLSX.writeFile(workbook, "海拓客户导入模板.xlsx");
   toast("客户导入模板已下载");
 }
 
@@ -18290,7 +18319,7 @@ async function exportQuestionBank() {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "基础题库");
-    XLSX.writeFile(workbook, `GoodJob基础题库-${Date.now()}.xlsx`);
+    XLSX.writeFile(workbook, `海拓基础题库-${Date.now()}.xlsx`);
     toast(`题库已导出：${rows.length} 道题`);
   } catch (error) {
     toast(error instanceof Error ? error.message : "题库导出失败", "error");
@@ -19064,14 +19093,58 @@ function openAccessControlMemberEditor(overview: AccessControlOverview, memberId
   qs("#saveIamMember")?.addEventListener("click", () => void mutateAccessControl(() => api(`/api/v1/members/${encodeURIComponent(member.id)}`, { method: "PATCH", body: JSON.stringify({ ...accessControlTenantBody(overview), status: qs<HTMLSelectElement>("#iamMemberStatus")?.value, organizationUnitId: qs<HTMLSelectElement>("#iamMemberOrg")?.value, reason: "成员目录调整" }) }), "成员设置已更新"));
 }
 
-function openAccessControlMemberCreator(overview: AccessControlOverview) {
-  openModal("新增成员", `<div class="form-grid"><div class="form-field"><label>姓名</label><input id="iamNewMemberName" maxlength="100"></div><div class="form-field"><label>邮箱</label><input id="iamNewMemberEmail" type="email" maxlength="180"></div><div class="form-field"><label>初始密码</label><input id="iamNewMemberPassword" type="password" minlength="8" autocomplete="new-password"></div><div class="form-field"><label>角色</label><select id="iamNewMemberRole">${overview.roles.filter((role) => role.status !== "disabled").map((role) => `<option value="${escapeHtml(role.id)}">${escapeHtml(role.name)}</option>`).join("")}</select></div></div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveIamNewMember">创建成员</button>`);
-  qs("#saveIamNewMember")?.addEventListener("click", () => {
+interface HaituoCredentials { email: string; password: string }
+
+function showHaituoCredentials(credentials: HaituoCredentials) {
+  const info = `海拓登录信息\n网址：${location.origin}/\n账号：${credentials.email}\n临时密码：${credentials.password}\n首次登录请设置自己的密码。`;
+  openModal("开户成功", `<p>请复制并私下发给使用者。临时密码仅在此处展示，关闭后无法查看。</p>
+    <div class="form-field full"><label for="haituoAccountInfo">登录信息</label><textarea id="haituoAccountInfo" readonly rows="6" spellcheck="false">${escapeHtml(info)}</textarea></div>`,
+    `<button class="btn" data-modal-close>关闭</button><button class="btn primary" id="haituoCopyAccount">复制登录信息</button>`);
+  qs("#haituoCopyAccount")?.addEventListener("click", () => void (async () => {
+    try { await navigator.clipboard.writeText(info); toast("登录信息已复制", "success"); }
+    catch { const field = qs<HTMLTextAreaElement>("#haituoAccountInfo"); field?.focus(); field?.select(); toast("请按 Ctrl+C 复制选中的登录信息"); }
+  })());
+  modalDismissHandler = () => {
+    qs("#modalBody")?.replaceChildren();
+    qs("#modalFoot")?.replaceChildren();
+  };
+}
+
+function openHaituoAccountCreator(options: { roles?: AccessControlOverview["roles"]; submit: (input: { name: string; email?: string; roleId?: string }) => Promise<{ credentials: HaituoCredentials }>; refresh: () => Promise<void> }) {
+  const roles = options.roles?.filter((role) => role.status !== "disabled") || [];
+  const defaultRole = roles.find((role) => ["legacy_sales", "sales_rep", "sales"].includes(role.code))?.id;
+  openModal(options.roles ? "一键开户" : "开通公司管理员", `<div class="form-grid">
+    <div class="form-field full"><label for="iamNewMemberName">使用者姓名</label><input id="iamNewMemberName" maxlength="100" placeholder="例如：张三" autocomplete="off"></div>
+    <div class="form-field full"><label for="iamNewMemberEmail">登录账号（选填）</label><input id="iamNewMemberEmail" type="email" maxlength="180" placeholder="留空自动生成，也可填写邮箱" autocomplete="off"><small>自动生成的账号仅用于登录，不是收件邮箱。</small></div>
+    ${options.roles ? `<div class="form-field full"><label for="iamNewMemberRole">角色</label><select id="iamNewMemberRole">${roles.map((role) => `<option value="${escapeHtml(role.id)}" ${role.id === defaultRole ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></div>` : ""}
+    <p class="form-field full">临时密码自动生成，开户后可复制登录信息发给使用者。</p>
+  </div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveIamNewMember">生成账号和密码</button>`);
+  qs<HTMLInputElement>("#iamNewMemberName")?.focus();
+  const button = qs<HTMLButtonElement>("#saveIamNewMember")!;
+  button.addEventListener("click", () => void (async () => {
     const name = qs<HTMLInputElement>("#iamNewMemberName")?.value.trim() || "";
-    const email = qs<HTMLInputElement>("#iamNewMemberEmail")?.value.trim() || "";
-    const password = qs<HTMLInputElement>("#iamNewMemberPassword")?.value || "";
-    if (!name || !email || password.length < 8) { toast("请填写姓名、邮箱和至少 8 位密码", "error"); return; }
-    void mutateAccessControl(() => api("/api/v1/members", { method: "POST", body: JSON.stringify({ ...accessControlTenantBody(overview), name, email, password, roleId: qs<HTMLSelectElement>("#iamNewMemberRole")?.value, reason: "新增成员" }) }), "成员已创建");
+    const emailField = qs<HTMLInputElement>("#iamNewMemberEmail");
+    const email = emailField?.value.trim() || undefined;
+    if (!name) { toast("请填写使用者姓名", "error"); return; }
+    if (email && !emailField?.reportValidity()) return;
+    const roleId = qs<HTMLSelectElement>("#iamNewMemberRole")?.value;
+    if (options.roles && !roleId) { toast("请先配置可用角色", "error"); return; }
+    button.disabled = true; button.textContent = "正在开户…";
+    try {
+      const result = await options.submit({ name, email, roleId });
+      showHaituoCredentials(result.credentials);
+      void options.refresh().catch(() => toast("账号已创建，列表刷新失败，请手动刷新", "error"));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "开户失败", "error");
+      button.disabled = false; button.textContent = "生成账号和密码";
+    }
+  })());
+}
+
+function openAccessControlMemberCreator(overview: AccessControlOverview) {
+  openHaituoAccountCreator({ roles: overview.roles,
+    submit: (input) => api("/api/v1/members/quick-create", { method: "POST", body: JSON.stringify({ ...accessControlTenantBody(overview), ...input }) }),
+    refresh: () => loadAccessControl(overview.company?.id || "")
   });
 }
 
@@ -19452,7 +19525,7 @@ function renderAccessControl() {
             ? renderAccessControlAudit(overview)
             : renderAccessControlMemberManagement(overview);
   root.innerHTML = `<div class="ac-shell">
-    <header class="ac-page-head"><div class="ac-title"><div class="ac-title-line"><h1>${pageTitle[page]}</h1><span class="ac-boundary-state">公司级隔离</span></div><p>${overview.company ? `当前公司：${escapeHtml(overview.company.name)}` : "平台公司目录"}</p></div><div class="ac-head-actions">${accessControlCompanyOptions(overview)}<button class="btn" type="button" data-ac-refresh>刷新</button>${page === "members" ? `<button class="btn primary" type="button" data-ac-add-member data-permission="member.manage" ${overview.company ? "" : "disabled"}>新增成员</button>` : ""}</div></header>
+    <header class="ac-page-head"><div class="ac-title"><div class="ac-title-line"><h1>${pageTitle[page]}</h1><span class="ac-boundary-state">公司级隔离</span></div><p>${overview.company ? `当前公司：${escapeHtml(overview.company.name)}` : "平台公司目录"}</p></div><div class="ac-head-actions">${accessControlCompanyOptions(overview)}<button class="btn" type="button" data-ac-refresh>刷新</button>${page === "members" ? `<button class="btn primary" type="button" data-ac-add-member data-permission="member.manage" ${overview.company ? "" : "disabled"}>一键开户</button>` : ""}</div></header>
     <div class="ac-tab-panel">${body}</div>
     <button class="ac-guide-fab" type="button" data-ac-guide aria-label="权限使用说明" title="权限使用说明">?</button>
   </div>`;
@@ -19682,7 +19755,7 @@ async function deleteAccount(id: string, button?: HTMLButtonElement) {
   }
   if (!await confirmAction({
     title: "删除成员账号",
-    message: "该成员将无法继续登录 GoodJob CRM。",
+    message: "该成员将无法继续登录 海拓 CRM。",
     detail: `${account.name}（${account.email}）`,
     detailLabel: "成员账号",
     consequences: ["账号权限会立即失效", "该成员名下的业务数据不会随账号删除"],
@@ -23129,7 +23202,7 @@ function renderProspectMailPreview() {
   const preview = qs<HTMLElement>("#prospectMailPreview");
   const item = selectedProspect();
   if (!preview) return;
-  const sender = state.user?.emailSenderName || state.user?.name || "GoodJob Sales";
+  const sender = state.user?.emailSenderName || state.user?.name || "海拓 Sales";
   const from = state.user?.outboundEmail || "";
   preview.textContent = [
     `From: ${sender}${from ? ` <${from}>` : " <未绑定发件邮箱>"}`,
@@ -23146,8 +23219,8 @@ function generateProspectMailDraft() {
     toast("请先选择一条搜客线索", "error");
     return;
   }
-  const sender = state.user?.emailSenderName || state.user?.name || "GoodJob Sales";
-  const signature = state.user?.emailSignature?.trim() || `Best regards,\n${sender}\nGoodJob Sales Team`;
+  const sender = state.user?.emailSenderName || state.user?.name || "海拓 Sales";
+  const signature = state.user?.emailSignature?.trim() || `Best regards,\n${sender}\n海拓 Sales Team`;
   const mailTo = qs<HTMLInputElement>("#prospectMailTo");
   const subject = qs<HTMLInputElement>("#prospectMailSubject");
   const body = qs<HTMLTextAreaElement>("#prospectMailBody");
@@ -23164,7 +23237,7 @@ function generateProspectMailDraft() {
       `Dear ${item.company} team,`,
       "",
       `I noticed your company is active in ${item.business || "international sourcing and distribution"}${item.country ? ` in ${item.country}` : ""}.`,
-      "GoodJob supports overseas buyers with product selection, specifications, certificates, quotations and sample coordination.",
+      "海拓 supports overseas buyers with product selection, specifications, certificates, quotations and sample coordination.",
       "",
       "May I know which product categories you are currently sourcing, and whether you have any upcoming project requirements?",
       "",
@@ -30182,7 +30255,7 @@ function exportLeadFinderRows() {
   })));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "智能搜客结果");
-  XLSX.writeFile(workbook, `GoodJob智能搜客结果-${Date.now()}.xlsx`);
+  XLSX.writeFile(workbook, `海拓智能搜客结果-${Date.now()}.xlsx`);
   toast("搜客结果已导出");
 }
 
@@ -31255,7 +31328,7 @@ function renderExecutiveReport(report: ExecutiveReport) {
     if (node) node.innerHTML = value;
   };
   setText("#reportPeriod", `${report.title} · ${report.period.label}`);
-  setText("#reportGeneratedAt", `GoodJob CRM · 生成于 ${generatedText}`);
+  setText("#reportGeneratedAt", `海拓 CRM · 生成于 ${generatedText}`);
   setText("#reportHeadline", report.headline);
   setText("#reportHeroNote", state.reportNote || report.note);
   setText("#reportScope", `范围：${report.scope.label}`);
@@ -31385,7 +31458,7 @@ async function exportReport() {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "GoodJob-CRM-经营汇报.txt";
+  link.download = "海拓-CRM-经营汇报.txt";
   link.click();
   URL.revokeObjectURL(link.href);
   toast("汇报已生成下载");
@@ -31797,7 +31870,7 @@ function buildDailyDraft(dateStr: string): DailyDraft {
     return `<div class="dy-bar"><span class="dy-bar-label">${LOG_CATEGORY_LABEL[c]}</span><span class="dy-bar-track"><i style="width:${pct}%"></i></span><span class="dy-bar-val">${v}</span></div>`;
   }).join("");
 
-  const markdown = `# GoodJob CRM 每日经营日报（${dateStr}）
+  const markdown = `# 海拓 CRM 每日经营日报（${dateStr}）
 
 ## 今日完成工作
 ${completedWork}
@@ -32106,26 +32179,6 @@ function installEvents() {
     const password = qs<HTMLInputElement>("#loginPassword")?.value || "";
     void loginWithPassword(email, password).catch((error) => toast(error instanceof Error ? error.message : "登录失败", "error"));
   }, true);
-  qsa<HTMLButtonElement>("#loginDemoAccounts [data-demo-email]").forEach((button) => {
-    const fillDemoAccount = () => {
-      const email = button.dataset.demoEmail || "";
-      const emailInput = qs<HTMLInputElement>("#loginEmail");
-      const passwordInput = qs<HTMLInputElement>("#loginPassword");
-      if (emailInput) emailInput.value = email;
-      if (passwordInput) passwordInput.value = DEMO_ACCOUNT_PASSWORD;
-      qsa<HTMLButtonElement>("#loginDemoAccounts [data-demo-email]")
-        .forEach((item) => item.classList.toggle("is-filled", item === button));
-      return email;
-    };
-    button.addEventListener("click", () => {
-      fillDemoAccount();
-    });
-    button.addEventListener("dblclick", () => {
-      const email = fillDemoAccount();
-      void loginWithPassword(email, DEMO_ACCOUNT_PASSWORD)
-        .catch((error) => toast(error instanceof Error ? error.message : "登录失败", "error"));
-    });
-  });
   qs<HTMLButtonElement>("#logoutButton")?.addEventListener("click", async () => {
     if (memoDirty && !await confirmAction({
       title: "退出并清除本机草稿",
@@ -34335,7 +34388,7 @@ function exportContainerLoad() {
       <tr><th>配重校验 · 偏载</th><td>前后偏移 ${txt("clCgLong")} · 左右偏移 ${txt("clCgLat")} · 重心高度 ${txt("clCgHeight")} <span class="xp-badge ${balanceWarn()}">${badgeText("clBalanceBadge")}</span></td></tr>
     </table>
     ${snap}
-    <div class="xp-foot">本方案由 GoodJob CRM 装箱计算模块生成，理论最大值按同向整齐码放估算，实际装柜请预留 10–15% 安全余量（间隙、加固、不规则形状）。重量以「单件重量×件数」核对集装箱最大载货重；配重按贴角码放估算重心。</div>
+    <div class="xp-foot">本方案由 海拓 CRM 装箱计算模块生成，理论最大值按同向整齐码放估算，实际装柜请预留 10–15% 安全余量（间隙、加固、不规则形状）。重量以「单件重量×件数」核对集装箱最大载货重；配重按贴角码放估算重心。</div>
   </body></html>`;
 
   const w = window.open("", "_blank", "width=900,height=1000");
@@ -34763,12 +34816,12 @@ async function loadProductConfig() {
     const response = await fetch("/product-config.json", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const config = await response.json() as { productName?: string; version?: string };
-    const productName = String(config.productName || "GoodJob CRM").trim();
+    const productName = String(config.productName || "海拓 CRM").trim();
     const version = String(config.version || "").trim();
     if (versionNode) versionNode.textContent = version ? `${productName} · 版本 ${version}` : productName;
     if (version) document.title = `${productName} ${version} · 外贸客户管理系统`;
   } catch {
-    if (versionNode) versionNode.textContent = "GoodJob CRM";
+    if (versionNode) versionNode.textContent = "海拓 CRM";
   }
 }
 
@@ -34911,10 +34964,10 @@ let pendingUpdateCredits: string | null = null;
 
 // 默认鸣谢内容 (编译进 JS, 永远存在, 不会被更新覆盖)
 const DEFAULT_CREDITS = `<div style="text-align:center;margin-bottom:16px;">
-  <div style="font-size:18px;font-weight:600;color:var(--accent,#3157d5);margin-bottom:4px;">GoodJob CRM</div>
+  <div style="font-size:18px;font-weight:600;color:var(--accent,#3157d5);margin-bottom:4px;">海拓 CRM</div>
   <div style="font-size:12px;color:var(--text-2,#999);">外贸客户关系管理系统</div>
 </div>
-<p style="margin-bottom:12px;">感谢您使用 GoodJob CRM，即将开始更新。本软件在开发过程中使用了以下开源项目，在此表示感谢：</p>
+<p style="margin-bottom:12px;">感谢您使用 海拓 CRM，即将开始更新。本软件在开发过程中使用了以下开源项目，在此表示感谢：</p>
 <div style="background:var(--surface-2,#f5f7fa);border-radius:8px;padding:12px 16px;margin-bottom:12px;">
   <div style="font-weight:600;margin-bottom:8px;font-size:13px;">开源依赖</div>
   <div style="font-size:12px;line-height:2;color:var(--text-2,#666);">

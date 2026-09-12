@@ -334,7 +334,7 @@ function CrmImportModal({
   };
 
   return (
-    <Modal title="从 GoodJob CRM 导入联系人" onClose={onClose}>
+    <Modal title="从 海拓 CRM 导入联系人" onClose={onClose}>
       <form className="form-stack" onSubmit={submit}>
         <label><span>CRM 联系人</span><select name="crmContactId" required>{crmContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name} · {contact.phone}</option>)}</select></label>
         <label><span>目标 WhatsApp 账号</span><select name="accountId" defaultValue={initialAccountId} disabled={eligibleAccounts.length === 0}>{accounts.map((account) => <option key={account.id} value={account.id} disabled={!canProvisionContact(account)}>{account.name} · {account.provider} · {canProvisionContact(account) ? account.status === "connected" ? "在线" : "可先建档" : "需先连接"}</option>)}</select></label>

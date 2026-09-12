@@ -73,7 +73,7 @@ function fallbackSystemDocument(): AgentKnowledgeDocument {
     id: "system.contract.fallback",
     module: "agent",
     title: "Agent 安全执行边界",
-    content: "Agent 只能使用 GoodJob CRM 提供的工具和当前用户权限。不得猜测接口、业务对象或执行结果；只读要求禁止写入和发送。"
+    content: "Agent 只能使用 海拓工作台 提供的工具和当前用户权限。不得猜测接口、业务对象或执行结果；只读要求禁止写入和发送。"
   };
   return {
     ...semantic,

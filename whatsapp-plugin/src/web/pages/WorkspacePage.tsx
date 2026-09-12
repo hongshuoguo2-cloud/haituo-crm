@@ -147,8 +147,8 @@ export function WorkspacePage({ selectedAccountId, requestedConversationId, onRe
       void queryClient.invalidateQueries({ queryKey: queryKeys.crmTodos });
     }
   });
-  const createGoodJobTodo = useMutation({
-    mutationFn: (followup: ConversationFollowUp) => api.createGoodJobTodo({
+  const create海拓Todo = useMutation({
+    mutationFn: (followup: ConversationFollowUp) => api.create海拓Todo({
       title: followup.title,
       priority: followup.priority,
       dueAt: followup.dueAt,
@@ -249,8 +249,8 @@ export function WorkspacePage({ selectedAccountId, requestedConversationId, onRe
           onAnalyze={() => analyzeConversation.mutate()}
           onUpdateFollowup={(id, status, crmTodoId) => updateFollowup.mutate({ id, status, crmTodoId })}
           followupUpdateError={updateFollowup.error?.message}
-          creatingGoodJobTodo={createGoodJobTodo.isPending}
-          onCreateGoodJobTodo={(followup) => createGoodJobTodo.mutate(followup)}
+          creating海拓Todo={create海拓Todo.isPending}
+          onCreate海拓Todo={(followup) => create海拓Todo.mutate(followup)}
           onCreateCrm={() => selectedContact && createCrm.mutate(selectedContact.id)}
           crmCustomer={crmCustomer}
           customerTodos={customerTodos}
@@ -281,8 +281,8 @@ function InspectorContent({
   onAnalyze,
   onUpdateFollowup,
   followupUpdateError,
-  creatingGoodJobTodo,
-  onCreateGoodJobTodo,
+  creating海拓Todo,
+  onCreate海拓Todo,
   onCreateCrm,
   crmCustomer,
   customerTodos,
@@ -302,8 +302,8 @@ function InspectorContent({
   onAnalyze(): void;
   onUpdateFollowup(id: string, status: ConversationFollowUp["status"], crmTodoId?: string): void;
   followupUpdateError?: string;
-  creatingGoodJobTodo: boolean;
-  onCreateGoodJobTodo(followup: ConversationFollowUp): void;
+  creating海拓Todo: boolean;
+  onCreate海拓Todo(followup: ConversationFollowUp): void;
   onCreateCrm(): void;
   crmCustomer?: CrmCustomerSnapshot;
   customerTodos: CrmTodoSnapshot[];
@@ -393,7 +393,7 @@ function InspectorContent({
               {intelligence.analysis.keyPoints.length > 0 && <div className="key-point-list">{intelligence.analysis.keyPoints.slice(0, 4).map((point) => <span key={point}><Check size={12} />{point}</span>)}</div>}
             </> : <div className="analysis-empty"><span>尚未生成分析，系统会基于会话证据提取客户特征和跟进项。</span><button className="button secondary full" onClick={onAnalyze} disabled={analyzing}>{analyzing ? <Spinner /> : <Sparkles size={15} />} 生成客户分析</button></div>}
           </div>
-          <div className="inspector-section"><div className="section-action-title"><h4>跟进与待办</h4><span className="section-count">{pendingFollowups.length + customerTodos.filter((todo) => !pendingFollowups.some((item) => todoForFollowup(item)?.id === todo.id)).length}</span></div>{followupUpdateError && <div className="form-error">{followupUpdateError}</div>}<div className="followup-list advanced-list">{pendingFollowups.map((item) => { const linkedTodo = todoForFollowup(item); return <div className={`followup-item${linkedTodo ? " crm-todo" : ""}`} key={item.id}><span className={`priority-line priority-${item.priority}`} /><span><strong>{item.title}</strong><small>{formatDueAt(item.dueAt)} · {linkedTodo ? "已进入 GoodJob 待办" : item.reason}</small></span><button className="button compact" title="创建 GoodJob 待办" onClick={() => onCreateGoodJobTodo(item)} disabled={creatingGoodJobTodo || Boolean(linkedTodo)}><ClipboardPlus size={14} /> {linkedTodo ? "已加入待办" : "转待办"}</button><button className="icon-button" title="标记完成" onClick={() => onUpdateFollowup(item.id, "completed", linkedTodo?.id)}><Check size={14} /></button></div>; })}{customerTodos.filter((todo) => !pendingFollowups.some((item) => todoForFollowup(item)?.id === todo.id)).map((todo) => <div className="followup-item crm-todo" key={todo.id}><CalendarClock size={15} /><span><strong>{todo.title}</strong><small>{formatDueAt(todo.dueAt)} · 已进入 GoodJob 待办</small></span></div>)}{pendingFollowups.length + customerTodos.filter((todo) => !pendingFollowups.some((item) => todoForFollowup(item)?.id === todo.id)).length === 0 && <div className="analysis-empty"><span>目前没有未完成事项。新消息分析后，建议会在这里出现。</span></div>}</div></div>
+          <div className="inspector-section"><div className="section-action-title"><h4>跟进与待办</h4><span className="section-count">{pendingFollowups.length + customerTodos.filter((todo) => !pendingFollowups.some((item) => todoForFollowup(item)?.id === todo.id)).length}</span></div>{followupUpdateError && <div className="form-error">{followupUpdateError}</div>}<div className="followup-list advanced-list">{pendingFollowups.map((item) => { const linkedTodo = todoForFollowup(item); return <div className={`followup-item${linkedTodo ? " crm-todo" : ""}`} key={item.id}><span className={`priority-line priority-${item.priority}`} /><span><strong>{item.title}</strong><small>{formatDueAt(item.dueAt)} · {linkedTodo ? "已进入 海拓 待办" : item.reason}</small></span><button className="button compact" title="创建 海拓 待办" onClick={() => onCreate海拓Todo(item)} disabled={creating海拓Todo || Boolean(linkedTodo)}><ClipboardPlus size={14} /> {linkedTodo ? "已加入待办" : "转待办"}</button><button className="icon-button" title="标记完成" onClick={() => onUpdateFollowup(item.id, "completed", linkedTodo?.id)}><Check size={14} /></button></div>; })}{customerTodos.filter((todo) => !pendingFollowups.some((item) => todoForFollowup(item)?.id === todo.id)).map((todo) => <div className="followup-item crm-todo" key={todo.id}><CalendarClock size={15} /><span><strong>{todo.title}</strong><small>{formatDueAt(todo.dueAt)} · 已进入 海拓 待办</small></span></div>)}{pendingFollowups.length + customerTodos.filter((todo) => !pendingFollowups.some((item) => todoForFollowup(item)?.id === todo.id)).length === 0 && <div className="analysis-empty"><span>目前没有未完成事项。新消息分析后，建议会在这里出现。</span></div>}</div></div>
           <div className="inspector-section"><div className="section-action-title"><h4>最近互动与会议</h4><History size={15} /></div><div className="activity-timeline">{recentActivities.map((activity) => <div key={activity.id} className="timeline-item"><span>{activity.type === "meeting" ? <CalendarClock size={14} /> : <PhoneCall size={14} />}</span><div><strong>{activity.type === "meeting" ? "会议" : activity.type === "call" ? "电话" : activity.type === "whatsapp" ? "WhatsApp" : activity.type === "email" ? "邮件" : "客户记录"}</strong><small>{new Date(activity.createdAt).toLocaleString("zh-CN")}{activity.operatorName ? ` · ${activity.operatorName}` : ""}</small><p>{activity.content}</p>{activity.nextReminder && <em>下次：{activity.nextReminder}</em>}</div></div>)}{recentActivities.length === 0 && <div className="analysis-empty"><span>尚无互动记录。会议、电话和约定会按时间沉淀在这里。</span></div>}</div></div>
           <div className="inspector-section"><h4>渠道身份</h4><dl className="detail-list"><div><dt>账号</dt><dd>{account.name}</dd></div><div><dt>Provider</dt><dd>{account.provider}</dd></div><div><dt>用途</dt><dd>{account.purposeLabel || "未设置"}</dd></div><div><dt>状态</dt><dd><StatusBadge status={account.status} /></dd></div></dl></div>
           <div className="inspector-section"><h4>翻译策略</h4><div className="linked-state neutral"><Bot size={16} /><span><strong>{autoTranslate ? "自动翻译已开启" : "按需手动翻译"}</strong><small>目标语言 {targetLanguage}</small></span></div></div>

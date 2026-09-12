@@ -4,7 +4,7 @@ import { Repository } from "../db/repository.js";
 import { ConversationIntelligenceService } from "./conversation-intelligence.js";
 
 function crmToken(secret: string, userId: string): string {
-  return jwt.sign({ ver: 1 }, secret, { subject: userId, issuer: "goodjob-crm", audience: "goodjob-crm-web", expiresIn: "10m", algorithm: "HS256" });
+  return jwt.sign({ ver: 1 }, secret, { subject: userId, issuer: "haituo-crm", audience: "haituo-crm-web", expiresIn: "10m", algorithm: "HS256" });
 }
 
 function localDate(timezone: string, value: Date = new Date()): string {

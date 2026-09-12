@@ -14,12 +14,12 @@ export {
 } from "./authorization.js";
 
 const scrypt = promisify(scryptCallback);
-const TOKEN_ISSUER = "goodjob-crm";
-const TOKEN_AUDIENCE = "goodjob-crm-web";
+const TOKEN_ISSUER = "haituo-crm";
+const TOKEN_AUDIENCE = "haituo-crm-web";
 const TOKEN_TTL_SECONDS = 8 * 60 * 60;
 const EPHEMERAL_DEVELOPMENT_SECRET = randomBytes(48).toString("base64url");
-export const AUTH_COOKIE_NAME = "gj_session";
-export const CSRF_COOKIE_NAME = "gj_csrf";
+export const AUTH_COOKIE_NAME = "ht_session";
+export const CSRF_COOKIE_NAME = "ht_csrf";
 
 export type IamActor = Pick<SessionUser, "id" | "teamId" | "role"> & Partial<Pick<SessionUser,
   "iamPermissions" | "iamRoleNames" | "iamSource" | "iamDataScope">>;
@@ -122,6 +122,22 @@ export function signMfaSetupToken(user: SessionUser): string {
   );
 }
 
+// A first-login credential is deliberately not a session; it cannot access CRM APIs.
+export function signPasswordChangeToken(user: SessionUser): string {
+  return jwt.sign({ ver: user.authVersion, purpose: "haituo_password_change" }, jwtSecret(), {
+    subject: user.id, issuer: TOKEN_ISSUER, audience: TOKEN_AUDIENCE,
+    expiresIn: 10 * 60, algorithm: "HS256"
+  });
+}
+
+export function verifyPasswordChangeToken(token: string) {
+  try {
+    const claims = jwt.verify(token, jwtSecret(), { issuer: TOKEN_ISSUER, audience: TOKEN_AUDIENCE, algorithms: ["HS256"] }) as TokenClaims;
+    return claims.purpose === "haituo_password_change" && claims.sub
+      ? { userId: claims.sub, authVersion: Number(claims.ver || 1) } : null;
+  } catch { return null; }
+}
+
 export function verifyMfaSetupToken(token: string) {
   try {
     const claims = jwt.verify(token, jwtSecret(), { issuer: TOKEN_ISSUER, audience: TOKEN_AUDIENCE, algorithms: ["HS256"] }) as TokenClaims;
@@ -175,6 +191,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const user = getStore().users.find((item) => item.id === claims.sub);
   if (!user || user.status !== "active" || Number(user.authVersion || 1) !== Number(claims.ver || 1)) {
     res.status(401).json({ message: "登录状态已失效，请重新登录" });
+    return;
+  }
+  if (user.mustChangePassword) {
+    res.status(401).json({ message: "请重新登录并修改临时密码" });
     return;
   }
   const resolvedDataScope = req.user?.id === user.id ? req.user.iamDataScope : undefined;
