@@ -122,7 +122,14 @@ foreach ($entry in $haituoManifest.files) {
 }
 
 $rootDependenciesChanged = Get-HaituoLockChanged 'package-lock.json'
-$pluginDependenciesChanged = Get-HaituoLockChanged 'whatsapp-plugin/package-lock.json'
+$pluginDependencySentinels = @(
+    'whatsapp-plugin/node_modules/mysql2/package.json',
+    'whatsapp-plugin/node_modules/express/package.json',
+    'whatsapp-plugin/node_modules/@whiskeysockets/baileys/package.json',
+    'whatsapp-plugin/node_modules/socket.io/package.json'
+)
+$pluginDependenciesMissing = @($pluginDependencySentinels | Where-Object { -not (Test-Path -LiteralPath (Join-Path $haituoApp $_) -PathType Leaf) }).Count -gt 0
+$pluginDependenciesChanged = (Get-HaituoLockChanged 'whatsapp-plugin/package-lock.json') -or $pluginDependenciesMissing
 $haituoNode = (Get-Command node.exe -ErrorAction Stop).Source
 $haituoNpm = if ($rootDependenciesChanged -or $pluginDependenciesChanged) { (Get-Command npm.cmd -ErrorAction Stop).Source } else { $null }
 function Register-HaituoWebTask {
