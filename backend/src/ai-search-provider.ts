@@ -8,10 +8,10 @@ import type { AiModelConfig } from "./types.js";
 export const AI_SEARCH_ADAPTER_VERSION = "ai-search-control-v1";
 
 export function aiSearchTimeoutMs() {
-  const configured = Number(process.env.AI_SEARCH_TIMEOUT_MS || 75_000);
+  const configured = Number(process.env.AI_SEARCH_TIMEOUT_MS || 120_000);
   return Number.isFinite(configured)
-    ? Math.max(20_000, Math.min(90_000, configured))
-    : 75_000;
+    ? Math.max(20_000, Math.min(120_000, configured))
+    : 120_000;
 }
 
 export function createAiSearchProvider(config: AiModelConfig) {

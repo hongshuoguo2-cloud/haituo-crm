@@ -1430,7 +1430,7 @@ interface WebsiteProbeAttempt {
   createdAt: string;
 }
 
-type ProspectIdentityAuthorityProvider = "gleif" | "companies_house" | "sec_edgar" | "fr_company_search";
+type ProspectIdentityAuthorityProvider = "gleif" | "companies_house" | "sec_edgar" | "fr_company_search" | "nl_kvk";
 
 interface ProspectIdentityBootstrapEvent {
   id: string;
@@ -23749,15 +23749,16 @@ function daysFromNow(days: number) {
 function openProspectCompanyQualification(item: WebsiteOpportunity) {
   const provider = item.country.toUpperCase() === "GB" ? "companies_house"
     : item.country.toUpperCase() === "US" ? "sec_edgar"
-      : item.country.toUpperCase() === "FR" ? "fr_company_search" : "gleif";
+      : item.country.toUpperCase() === "FR" ? "fr_company_search"
+        : ["NL", "NETHERLANDS", "荷兰"].includes(item.country.toUpperCase()) ? "nl_kvk" : "gleif";
   openModal(`企业核验 · ${item.company}`, `
     <div class="form-grid">
-      <div class="form-field"><label>权威登记源</label><select id="prospectCompanyProvider"><option value="companies_house" ${provider === "companies_house" ? "selected" : ""}>UK Companies House</option><option value="sec_edgar" ${provider === "sec_edgar" ? "selected" : ""}>SEC EDGAR</option><option value="fr_company_search" ${provider === "fr_company_search" ? "selected" : ""}>法国政府企业库</option><option value="gleif" ${provider === "gleif" ? "selected" : ""}>GLEIF</option></select></div>
-      <div class="form-field"><label>注册号 / LEI</label><input id="prospectCompanyRegistration" placeholder="Companies House 8 位；CIK:10 位；SIREN:9 位"></div>
+      <div class="form-field"><label>权威登记源</label><select id="prospectCompanyProvider"><option value="companies_house" ${provider === "companies_house" ? "selected" : ""}>UK Companies House</option><option value="sec_edgar" ${provider === "sec_edgar" ? "selected" : ""}>SEC EDGAR</option><option value="fr_company_search" ${provider === "fr_company_search" ? "selected" : ""}>法国政府企业库</option><option value="nl_kvk" ${provider === "nl_kvk" ? "selected" : ""}>Netherlands KVK</option><option value="gleif" ${provider === "gleif" ? "selected" : ""}>GLEIF</option></select></div>
+      <div class="form-field"><label>注册号 / LEI</label><input id="prospectCompanyRegistration" placeholder="KVK:8 位；Companies House:8 位；CIK:10 位；SIREN:9 位"></div>
       <div class="form-field"><label>登记状态</label><select id="prospectCompanyStatus"><option value="active">存续 / Active</option><option value="registered">已登记 / Registered</option><option value="inactive">非活跃 / Inactive</option><option value="dissolved">已注销 / Dissolved</option></select></div>
       <div class="form-field"><label>司法辖区</label><input id="prospectCompanyJurisdiction" value="${escapeHtml(item.country || "GLOBAL")}"></div>
       <div class="form-field full"><label>权威来源 URL</label><input id="prospectCompanySource" placeholder="https:// 官方登记详情页"></div>
-      <div class="form-field"><label>登记机关代码</label><input id="prospectCompanyAuthority" value="${provider === "companies_house" ? "GB-COMPANIES-HOUSE" : provider === "sec_edgar" ? "US-SEC" : provider === "fr_company_search" ? "FR-INPI" : "GLOBAL-LEI"}"></div>
+      <div class="form-field"><label>登记机关代码</label><input id="prospectCompanyAuthority" value="${provider === "companies_house" ? "GB-COMPANIES-HOUSE" : provider === "sec_edgar" ? "US-SEC" : provider === "fr_company_search" ? "FR-INPI" : provider === "nl_kvk" ? "NL-KVK" : "GLOBAL-LEI"}"></div>
       <div class="form-field"><label>有效至</label><input id="prospectCompanyValidUntil" type="date" value="${daysFromNow(90)}"></div>
       <div class="form-field full"><label>人工确认的官网</label><input id="prospectCompanyOfficialDomain" value="${escapeHtml(item.website)}"></div>
     </div>
@@ -24068,9 +24069,11 @@ async function openProspectIdentityConfirmation(item: WebsiteOpportunity) {
       ? "sec_edgar"
       : ["FR", "FRANCE", "法国"].includes(country)
         ? "fr_company_search"
-        : "gleif";
+        : ["NL", "NETHERLANDS", "荷兰"].includes(country)
+          ? "nl_kvk"
+          : "gleif";
   const defaultProvider = view.providers.find((provider) =>
-    provider.id === preferredId && provider.runtime?.ready
+    provider.id === preferredId
   ) || view.providers.find((provider) => provider.runtime?.ready)
     || view.providers[0];
   const options = view.providers.map((provider) => `

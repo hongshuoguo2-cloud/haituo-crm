@@ -307,7 +307,7 @@ defineMany(["GET /api/prospect-list/website-probe/capability", "GET /api/prospec
 define("POST /api/prospect-list/{id}/identity-bootstrap", objectSchema([
   "providerId", "registrationNumber", "requestId"
 ], {
-  providerId: oneOf("gleif", "companies_house", "sec_edgar", "fr_company_search"),
+  providerId: oneOf("gleif", "companies_house", "sec_edgar", "fr_company_search", "nl_kvk"),
   registrationNumber: string({ minLength: 1, maxLength: 80 }),
   requestId: string({ minLength: 8, maxLength: 120 })
 }), "按用户明确选择的权威登记来源和正式注册号创建身份核验任务；该动作会调用外部官方 API，必须冻结 Provider、注册号和 requestId 后确认，AI 不得补造注册号。");
@@ -428,7 +428,7 @@ defineMany(["DELETE /api/tools/ocr/batches/{batchId}", "DELETE /api/tools/ocr/jo
 define("POST /api/tools/ocr/jobs/{id}/image", objectSchema(["image", "mime"], { image: string({ minLength: 1, maxLength: 3000000 }), mime: oneOf("image/png", "image/jpeg", "image/webp"), fileName: string({ maxLength: 255 }) }), "为本人 OCR 任务上传用户明确选择的名片图片。");
 define("POST /api/tools/ocr/jobs/{id}/recognize-image", emptySchema, "使用当前账号已配置的视觉模型识别本人已上传的名片图片。");
 define("POST /api/prospect-list/{id}/contact-enrichment", objectSchema([], { force: boolean() }), "从已配置的合规来源补充本人候选客户联系方式；强制重试必须由用户明确要求。");
-define("POST /api/prospect-list/{id}/identity-bootstrap/discover", objectSchema(["providerId"], { providerId: oneOf("gleif", "companies_house", "sec_edgar", "fr_company_search") }), "使用已启用的企业登记数据源查找候选客户注册号，不访问未授权来源。");
+define("POST /api/prospect-list/{id}/identity-bootstrap/discover", objectSchema(["providerId"], { providerId: oneOf("gleif", "companies_house", "sec_edgar", "fr_company_search", "nl_kvk") }), "使用已启用的企业登记数据源查找候选客户注册号，不访问未授权来源。");
 define("PATCH /api/prospect-list/{id}/details", objectSchema(["company", "website"], { company: string({ minLength: 1, maxLength: 200 }), business: string({ maxLength: 255 }), country: string({ maxLength: 80 }), website: string({ minLength: 3, maxLength: 255 }), contact: string({ maxLength: 120 }), contactInfo: string({ maxLength: 255 }), description: string({ maxLength: 1000 }) }), "更新未入库候选详情，信息必须有来源依据。");
 define("PATCH /api/prospect-list/batch", objectSchema(["ids", "action"], { ids: array(string({ minLength: 1 }), { minItems: 1, maxItems: 100 }), action: oneOf("mark-contactable", "exclude", "restore", "assign"), ownerId: string({ minLength: 1 }), reason: string({ maxLength: 255 }), requestId: string({ minLength: 1, maxLength: 120 }), effectiveAt: string({ format: "date-time" }) }), "批量处理候选客户；分配涉及人员目录且只允许主管或管理员执行。");
 
@@ -439,7 +439,7 @@ define("POST /api/prospect-list/{id}/qualification/company", objectSchema([
   "sourceRef", "authorityCode", "observedAt", "validUntil"
 ], {
   requestId: qualificationRequestId,
-  providerCode: oneOf("gleif", "companies_house", "sec_edgar", "fr_company_search"),
+  providerCode: oneOf("gleif", "companies_house", "sec_edgar", "fr_company_search", "nl_kvk"),
   registrationNumber: string({ minLength: 2, maxLength: 80 }),
   operatingStatus: oneOf("active", "registered", "operating", "in_operation", "inactive", "dissolved", "liquidated", "struck_off", "closed"),
   jurisdiction: string({ minLength: 2, maxLength: 40 }),

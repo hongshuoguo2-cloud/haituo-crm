@@ -50,6 +50,7 @@ const OFFICIAL_IDENTITY_PROVIDERS = new Set([
   "companies_house",
   "sec_edgar",
   "fr_company_search",
+  "nl_kvk",
   "nppes",
   "openfda_510k",
   "mexico_denue",

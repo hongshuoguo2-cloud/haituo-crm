@@ -22,13 +22,13 @@ import type { AiModelConfig, ProviderCatalogItem } from "./types.js";
 
 const originalAiSearchTimeout = process.env.AI_SEARCH_TIMEOUT_MS;
 delete process.env.AI_SEARCH_TIMEOUT_MS;
-assert.equal(aiSearchTimeoutMs(), 75_000);
+assert.equal(aiSearchTimeoutMs(), 120_000);
 process.env.AI_SEARCH_TIMEOUT_MS = "5000";
 assert.equal(aiSearchTimeoutMs(), 20_000);
 process.env.AI_SEARCH_TIMEOUT_MS = "120000";
-assert.equal(aiSearchTimeoutMs(), 90_000);
+assert.equal(aiSearchTimeoutMs(), 120_000);
 process.env.AI_SEARCH_TIMEOUT_MS = "invalid";
-assert.equal(aiSearchTimeoutMs(), 75_000);
+assert.equal(aiSearchTimeoutMs(), 120_000);
 if (originalAiSearchTimeout === undefined) {
   delete process.env.AI_SEARCH_TIMEOUT_MS;
 } else {

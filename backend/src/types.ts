@@ -1249,7 +1249,8 @@ export type ProspectIdentityAuthorityProvider =
   | "gleif"
   | "companies_house"
   | "sec_edgar"
-  | "fr_company_search";
+  | "fr_company_search"
+  | "nl_kvk";
 
 export type ProspectIdentityBootstrapStage =
   | "validation"

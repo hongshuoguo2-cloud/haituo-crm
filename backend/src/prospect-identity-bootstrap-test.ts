@@ -34,6 +34,19 @@ assert.throws(
   (error: unknown) => error instanceof ProspectIdentityBootstrapError
     && error.code === "IDENTITY_BOOTSTRAP_INVALID"
 );
+const normalizedKvk = normalizeProspectIdentityRegistration(
+  "nl_kvk",
+  "KVK 04-020-132"
+);
+assert.equal(normalizedKvk.guide.id, "nl_kvk");
+assert.equal(normalizedKvk.registrationNumber, "KVK:04020132");
+assert.equal(normalizedKvk.providerRecordId, "KVK:04020132");
+assert.equal(normalizedKvk.normalizedIdentifier, "04020132");
+assert.throws(
+  () => normalizeProspectIdentityRegistration("nl_kvk", "0402013"),
+  (error: unknown) => error instanceof ProspectIdentityBootstrapError
+    && error.code === "IDENTITY_BOOTSTRAP_INVALID"
+);
 
 function candidate(id: string): WebsiteOpportunity {
   return {

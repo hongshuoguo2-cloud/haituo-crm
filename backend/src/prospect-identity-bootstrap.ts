@@ -79,6 +79,18 @@ ProspectIdentityAuthorityGuide[] = [{
   requiresKey: false,
   credentialKind: "none",
   setupNote: "免费官方接口，无需注册或配置凭据。"
+}, {
+  id: "nl_kvk",
+  name: "Netherlands KVK",
+  jurisdiction: "NL",
+  market: "Netherlands",
+  identifierLabel: "KVK number",
+  example: "8 位 KVK 编号",
+  profileCode: "nl-kvk-company-identity",
+  scheme: "nl-kvk",
+  requiresKey: true,
+  credentialKind: "api_key",
+  setupNote: "需要申请 KVK API 订阅并配置 API Key。"
 }];
 
 export class ProspectIdentityBootstrapError extends Error {
@@ -162,6 +174,20 @@ export function normalizeProspectIdentityRegistration(
       registrationNumber: `CIK:${normalized}`,
       providerRecordId: `CIK:${normalized}`,
       normalizedIdentifier: normalized
+    };
+  }
+  if (providerId === "nl_kvk") {
+    const digits = raw
+      .replace(/^KVK(?:\s+(?:NUMBER|NUMMER))?\s*:?\s*/u, "")
+      .replace(/[\s-]+/gu, "");
+    if (!/^\d{8}$/u.test(digits)) {
+      fail("IDENTITY_BOOTSTRAP_INVALID", "荷兰 KVK 编号必须为 8 位数字", 400);
+    }
+    return {
+      guide,
+      registrationNumber: `KVK:${digits}`,
+      providerRecordId: `KVK:${digits}`,
+      normalizedIdentifier: digits
     };
   }
   const digits = raw.replace(/^SIREN\s*:?\s*/u, "").replace(/\s+/gu, "");

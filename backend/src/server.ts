@@ -12475,7 +12475,8 @@ const prospectIdentityBootstrapBodySchema = z.object({
     "gleif",
     "companies_house",
     "sec_edgar",
-    "fr_company_search"
+    "fr_company_search",
+    "nl_kvk"
   ]),
   registrationNumber: z.string().trim().min(1).max(80),
   requestId: z.string().trim().min(8).max(120)
@@ -12541,7 +12542,7 @@ app.get("/api/prospect-list/:id/identity-bootstrap", requireAuth, asyncRoute(asy
 
 app.post("/api/prospect-list/:id/identity-bootstrap/discover", requireAuth, asyncRoute(async (req, res) => {
   const body = z.object({
-    providerId: z.enum(["gleif", "companies_house", "sec_edgar", "fr_company_search"])
+    providerId: z.enum(["gleif", "companies_house", "sec_edgar", "fr_company_search", "nl_kvk"])
   }).strict().parse(req.body);
   const store = getStore();
   let candidate: WebsiteOpportunity;
@@ -16575,7 +16576,7 @@ app.post("/api/lead-finder/parse-goal", requireAuth, asyncRoute(async (req, res)
   ].join("\n");
   let parsed: Record<string, unknown>;
   try {
-    const content = await callAiModel(config, prompt, 4000, undefined, 45_000);
+    const content = await callAiModel(config, prompt, 4000, undefined, 120_000);
     parsed = extractJsonObject(content) as Record<string, unknown>;
   } catch (err) {
     res.status(502).json({ message: "AI 解析失败：" + (err instanceof Error ? err.message : "模型返回无法解析") });

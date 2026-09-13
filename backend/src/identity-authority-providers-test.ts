@@ -10,6 +10,7 @@ import {
   setProviderHttpTestTransport
 } from "./provider-http-client.js";
 import { getProvider } from "./lead-providers.js";
+import { prospectOfficialIdentityMatch } from "./prospect-identity-authority-profiles.js";
 
 function provider(id: string) {
   const item = getProvider(id);
@@ -197,6 +198,86 @@ const franceMissing = await search(france, siren, { apiKey: "" }, "France");
 assert.equal(franceMissing.records.length, 0);
 assert.equal(franceMissing.invalidCount, 1);
 assert.match(franceMissing.usage?.display || "", /未找到/);
+
+const kvk = provider("nl_kvk");
+const kvkNumber = "04020132";
+let kvkApiKey = "";
+setProviderHttpTestTransport(async (url, init) => {
+  requestedUrl = url;
+  kvkApiKey = new Headers(init?.headers).get("apikey") || "";
+  return new Response(JSON.stringify({
+    kvkNummer: kvkNumber,
+    naam: "VepaDrentea B.V.",
+    handelsnamen: [{ naam: "Vepa, the furniture factory" }],
+    sbiActiviteiten: [{
+      sbiCode: "3101",
+      sbiOmschrijving: "Vervaardiging van bedrijfsmeubels",
+      indHoofdactiviteit: "Ja"
+    }],
+    _embedded: {
+      hoofdvestiging: {
+        eersteHandelsnaam: "Vepa, the furniture factory",
+        adressen: [{ volledigAdres: "Industrieweg 31 7903AH Hoogeveen" }],
+        websites: ["www.vepa.nl"]
+      }
+    }
+  }));
+});
+const kvkExact = await search(
+  kvk,
+  `KVK:${kvkNumber}`,
+  { apiKey: "kvk-test-key" },
+  "Netherlands"
+);
+assert.equal(requestedUrl, `https://api.kvk.nl/api/v1/basisprofielen/${kvkNumber}`);
+assert.equal(kvkApiKey, "kvk-test-key");
+assert.equal(kvkExact.records[0]?.company, "VepaDrentea B.V.");
+assert.equal(kvkExact.records[0]?.providerRecordId, `KVK:${kvkNumber}`);
+assert.equal(kvkExact.records[0]?.officialWebsite, "https://www.vepa.nl");
+assert.equal(kvkExact.records[0]?.confidence, 98);
+const kvkIdentity = prospectOfficialIdentityMatch(
+  "nl_kvk",
+  "company-search",
+  {
+    ...kvkExact.records[0]!,
+    fetchedAt: "2026-09-12T00:00:00.000Z"
+  }
+);
+assert.equal(kvkIdentity?.subjectRef, `nl-kvk:${kvkNumber}`);
+assert.equal(kvkIdentity?.identifierClaim.normalizedValue, kvkNumber);
+
+setProviderHttpTestTransport(async () => new Response(JSON.stringify({
+  pagina: 1,
+  resultatenPerPagina: 10,
+  totaal: 1,
+  resultaten: [{
+    kvkNummer: kvkNumber,
+    naam: "VepaDrentea B.V.",
+    type: "rechtspersoon",
+    actief: "Ja",
+    adres: {
+      binnenlandsAdres: {
+        straatnaam: "Industrieweg",
+        huisnummer: 31,
+        postcode: "7903AH",
+        plaats: "Hoogeveen"
+      }
+    }
+  }]
+})));
+const kvkByName = await search(kvk, "Vepa", { apiKey: "kvk-test-key" }, "Netherlands");
+assert.equal(kvkByName.records.length, 1);
+assert.equal(kvkByName.records[0]?.providerRecordId, `KVK:${kvkNumber}`);
+
+setProviderHttpTestTransport(async () => new Response(JSON.stringify({
+  kvkNummer: "12345678",
+  naam: "Wrong Netherlands Company"
+})));
+await assert.rejects(
+  search(kvk, kvkNumber, { apiKey: "kvk-test-key" }, "Netherlands"),
+  (error: unknown) => error instanceof ProviderContractError
+    && error.code === "PROVIDER_SCHEMA_CHANGED"
+);
 
 setProviderHttpTestTransport(null);
 console.log("Identity authority provider tests passed");

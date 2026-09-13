@@ -29,7 +29,8 @@ const registryProviderSchema = z.enum([
   "gleif",
   "companies_house",
   "sec_edgar",
-  "fr_company_search"
+  "fr_company_search",
+  "nl_kvk"
 ]);
 
 export const prospectCompanyQualificationSchema = z.object({
@@ -290,6 +291,9 @@ function normalizeRegistryIdentifier(providerCode: string, raw: string) {
   }
   if (providerCode === "fr_company_search") {
     return /^SIREN:\d{9}$/u.test(value) ? value : "";
+  }
+  if (providerCode === "nl_kvk") {
+    return /^KVK:\d{8}$/u.test(value) ? value : "";
   }
   return "";
 }

@@ -100,6 +100,16 @@ function exactCompaniesHouseNumber(query: NormalizedProviderQuery) {
   });
 }
 
+function exactKvkNumber(query: NormalizedProviderQuery) {
+  return exactQueryValue(query, (value) => {
+    const normalized = value
+      .toLocaleUpperCase("en-US")
+      .replace(/^(?:KVK(?:\s+(?:NUMBER|NUMMER))?|注册号)\s*:?\s*/u, "")
+      .replace(/[\s-]+/gu, "");
+    return /^\d{8}$/u.test(normalized) ? normalized : null;
+  });
+}
+
 function domainFromUrl(raw: string) {
   try {
     const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
@@ -773,6 +783,139 @@ const companiesHouse = defineProvider({
   }
 });
 
+const netherlandsKvk = defineProvider({
+  id: "nl_kvk",
+  name: "Netherlands KVK",
+  adapterVersion: "1.0.0",
+  tier: "paid",
+  category: "company",
+  requiresKey: true,
+  capabilities: ["company"],
+  docsUrl: "https://developers.kvk.nl/documentation/zoeken-api",
+  keyHint: "在荷兰 KVK Developer Portal 申请 API 订阅和 API Key 后填入。",
+  defaultBaseUrl: "https://api.kvk.nl",
+  costNote: "正式接口需要 KVK API 订阅；名称搜索免费，其他查询按 KVK 当前规则计费。",
+  networkPolicy: {
+    allowedHosts: ["api.kvk.nl"],
+    allowedPathPrefixes: ["/api/", "/test/api/"],
+    allowedMethods: ["GET"]
+  },
+  async search({ query }, cred, tools) {
+    const base = (cred.baseUrl || this.defaultBaseUrl || "https://api.kvk.nl").replace(/\/+$/, "");
+    const kvkNumber = exactKvkNumber(query);
+    const q = companyQueryText(query);
+    const url = kvkNumber
+      ? `${base}/api/v1/basisprofielen/${encodeURIComponent(kvkNumber)}`
+      : `${base}/api/v2/zoeken?naam=${encodeURIComponent(q)}&resultatenPerPagina=${Math.min(query.limit, 15)}`;
+    const response = await tools.http.fetch(url, {
+      headers: { apikey: cred.apiKey, accept: "application/json" }
+    });
+    if (kvkNumber && response.status === 404) {
+      return providerPage([], {
+        rawCount: 0,
+        display: `KVK 未找到公司编号 ${kvkNumber}`
+      });
+    }
+    if (!response.ok) throw providerHttpStatusError(response, "Netherlands KVK");
+    type KvkSearchAddress = {
+      binnenlandsAdres?: { straatnaam?: string; huisnummer?: number; postcode?: string; plaats?: string };
+      buitenlandsAdres?: { straatHuisnummer?: string; postcodeWoonplaats?: string; land?: string };
+    };
+    type KvkSearchRecord = {
+      kvkNummer?: string;
+      naam?: string;
+      type?: string;
+      actief?: string | boolean;
+      adres?: KvkSearchAddress;
+      links?: Array<{ rel?: string; href?: string }>;
+    };
+    type KvkProfile = {
+      kvkNummer?: string;
+      naam?: string;
+      handelsnamen?: Array<{ naam?: string }>;
+      sbiActiviteiten?: Array<{ sbiOmschrijving?: string; indHoofdactiviteit?: string }>;
+      _embedded?: {
+        hoofdvestiging?: {
+          eersteHandelsnaam?: string;
+          adressen?: Array<{ volledigAdres?: string; plaats?: string; land?: string }>;
+          websites?: string[];
+        };
+      };
+    };
+    const data = (await response.json()) as KvkProfile & { resultaten?: KvkSearchRecord[] };
+    const items: Array<KvkSearchRecord & KvkProfile> = kvkNumber
+      ? [data]
+      : data.resultaten || [];
+    if (kvkNumber && items.some((item) => item.kvkNummer !== kvkNumber)) {
+      throw new ProviderContractError({
+        code: "PROVIDER_SCHEMA_CHANGED",
+        retryable: false,
+        retryAfterAt: null,
+        publicMessage: "KVK 精确查询返回了不同的公司编号，已拒绝该记录",
+        httpStatus: null,
+        phase: "search"
+      });
+    }
+    const records = items.flatMap((item): RawLead[] => {
+      const number = item.kvkNummer || "";
+      if (!/^\d{8}$/u.test(number)) return [];
+      const domestic = item.adres?.binnenlandsAdres;
+      const foreign = item.adres?.buitenlandsAdres;
+      const headOffice = item._embedded?.hoofdvestiging;
+      const address = domestic
+        ? [domestic.straatnaam, domestic.huisnummer, domestic.postcode, domestic.plaats].filter(Boolean).join(" ")
+        : foreign
+          ? [foreign.straatHuisnummer, foreign.postcodeWoonplaats, foreign.land].filter(Boolean).join(" ")
+          : headOffice?.adressen?.find((entry) => entry.volledigAdres)?.volledigAdres || "地址待补充";
+      const mainActivity = item.sbiActiviteiten?.find((entry) => entry.indHoofdactiviteit === "Ja")
+        ?.sbiOmschrijving || item.sbiActiviteiten?.[0]?.sbiOmschrijving || "荷兰注册企业";
+      const website = headOffice?.websites?.[0] || "";
+      const officialWebsite = website
+        ? (/^https?:\/\//iu.test(website) ? website : `https://${website}`)
+        : "";
+      const active = item.actief === undefined ? "待核对" : String(item.actief);
+      return [{
+        company: item.naam || headOffice?.eersteHandelsnaam || item.handelsnamen?.[0]?.naam || "Netherlands company",
+        officialWebsite,
+        country: "Netherlands",
+        business: mainActivity,
+        contact: "待维护",
+        contactInfo: "",
+        description: `KVK 官方登记：${address}。状态 ${active}，KVK 编号 ${number}。`,
+        confidence: kvkNumber ? 98 : 54,
+        providerRecordId: `KVK:${number}`,
+        sourceUrl: item.links?.find((link) => link.rel === "basisprofiel")?.href || url,
+        recordType: "identity_evidence",
+        evidenceSummary: `荷兰 KVK 编号 ${number}，登记类型 ${item.type || "企业"}，状态 ${active}`,
+        matchedFields: ["company", "country", "description", ...(officialWebsite ? ["officialWebsite"] : [])]
+      }];
+    });
+    return providerPage(records, {
+      rawCount: items.length,
+      display: kvkNumber ? `KVK 精确核验公司编号 ${kvkNumber}` : undefined
+    });
+  },
+  async health(cred, tools) {
+    const base = (cred.baseUrl || this.defaultBaseUrl || "https://api.kvk.nl").replace(/\/+$/, "");
+    const response = await tools.http.fetch(`${base}/api/v2/zoeken?naam=test&resultatenPerPagina=1`, {
+      headers: { apikey: cred.apiKey, accept: "application/json" }
+    });
+    if (!response.ok) throw providerHttpStatusError(response, "Netherlands KVK");
+    const data = (await response.json()) as { resultaten?: unknown[] };
+    if (!Array.isArray(data.resultaten)) {
+      throw new ProviderContractError({
+        code: "PROVIDER_SCHEMA_CHANGED",
+        retryable: false,
+        retryAfterAt: null,
+        publicMessage: "KVK 返回格式与预期不一致",
+        httpStatus: null,
+        phase: "health"
+      });
+    }
+    return { ok: true, message: "Netherlands KVK 连接通过（仅荷兰注册企业）" };
+  }
+});
+
 const apollo = defineProvider({
   id: "apollo",
   name: "Apollo.io",
@@ -1033,6 +1176,7 @@ export const LEAD_PROVIDERS: LeadProvider[] = [
   WORLD_BANK_PROCUREMENT_PROVIDER,
   UK_CONTRACTS_FINDER_PROVIDER,
   companiesHouse,
+  netherlandsKvk,
   opencorporates,
   SEC_EDGAR_PROVIDER,
   ...PUBLIC_COMPANY_PROVIDERS,

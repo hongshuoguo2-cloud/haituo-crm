@@ -62,6 +62,20 @@ export const PROSPECT_IDENTITY_AUTHORITY_PROFILES: OrganizationIdentityAuthority
     normalizerVersions: ["fr-siren-normalizer-v1"],
     validatorVersions: ["fr-government-provider-record-v1"]
   }]
+}, {
+  profileCode: "nl-kvk-company-identity",
+  profileVersion: "v1",
+  providerCode: "nl_kvk",
+  endpointCode: COMPANY_ENDPOINT,
+  allowMultiIdentifierSubjectBinding: true,
+  rules: [{
+    kind: "registration_number",
+    scheme: "nl-kvk",
+    jurisdictions: ["NL"],
+    entityTypes: ["legal_entity"],
+    normalizerVersions: ["nl-kvk-registration-normalizer-v1"],
+    validatorVersions: ["nl-kvk-provider-record-v1"]
+  }]
 }];
 
 export interface ProspectOfficialIdentityMatch {
@@ -166,6 +180,26 @@ export function prospectOfficialIdentityMatch(
         subjectRef: `fr-siren:${match[1]}`,
         normalizerVersion: "fr-siren-normalizer-v1",
         validatorVersion: "fr-government-provider-record-v1",
+        observedAt
+      }
+    };
+  }
+  if (providerCode === "nl_kvk") {
+    const match = record.providerRecordId.trim().toLocaleUpperCase("en-US").match(/^KVK:(\d{8})$/u);
+    if (!match) return null;
+    return {
+      profile: PROSPECT_IDENTITY_AUTHORITY_PROFILES[4]!,
+      subjectRef: `nl-kvk:${match[1]}`,
+      identifierClaim: {
+        kind: "registration_number",
+        value: record.providerRecordId,
+        normalizedValue: match[1],
+        scheme: "nl-kvk",
+        jurisdiction: "NL",
+        entityType: "legal_entity",
+        subjectRef: `nl-kvk:${match[1]}`,
+        normalizerVersion: "nl-kvk-registration-normalizer-v1",
+        validatorVersion: "nl-kvk-provider-record-v1",
         observedAt
       }
     };
