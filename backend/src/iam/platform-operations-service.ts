@@ -186,9 +186,12 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
         `SELECT t.id, t.code, t.name, t.status, t.plan_code, t.seat_limit,
           t.trial_expires_at, t.authz_revision, t.created_at,
           COUNT(tm.id) AS member_count,
-          SUM(CASE WHEN tm.status = 'active' THEN 1 ELSE 0 END) AS active_member_count
+          SUM(CASE WHEN tm.status = 'active' THEN 1 ELSE 0 END) AS active_member_count,
+          MAX(CASE WHEN tm.status = 'active' AND u.status = 'active' AND u.role = 'admin' THEN u.name ELSE NULL END) AS administrator_name,
+          MAX(CASE WHEN tm.status = 'active' AND u.status = 'active' AND u.role = 'admin' THEN u.email ELSE NULL END) AS administrator_email
          FROM tenants t
          LEFT JOIN tenant_memberships tm ON tm.tenant_id = t.id
+         LEFT JOIN users u ON u.id = tm.user_id
          GROUP BY t.id, t.code, t.name, t.status, t.plan_code, t.seat_limit,
           t.trial_expires_at, t.authz_revision, t.created_at
          ORDER BY t.created_at DESC`
@@ -197,6 +200,8 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
         id: row.id, code: row.code, name: row.name, status: row.status,
         planCode: row.plan_code, seatLimit: Number(row.seat_limit),
         memberCount: Number(row.member_count), activeMemberCount: Number(row.active_member_count),
+        administratorName: String(row.administrator_name || ""),
+        administratorEmail: String(row.administrator_email || ""),
         authorizationRevision: Number(row.authz_revision),
         trialExpiresAt: row.trial_expires_at ? new Date(row.trial_expires_at).toISOString() : "",
         createdAt: new Date(row.created_at).toISOString()

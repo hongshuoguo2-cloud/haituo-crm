@@ -190,6 +190,8 @@ interface PlatformTenant {
   seatLimit: number;
   memberCount: number;
   activeMemberCount: number;
+  administratorName: string;
+  administratorEmail: string;
   authorizationRevision: number;
   trialExpiresAt: string;
   createdAt: string;
@@ -6601,6 +6603,7 @@ function platformMetric(label: string, value: number) {
 function platformTenantRows(items = platformTenants.slice(0, 12)) {
   return items.map((tenant) => `<tr>
     <td><div class="platform-cell-main"><b>${escapeHtml(tenant.name)}</b><small>${escapeHtml(tenant.code)} · ${escapeHtml(tenant.id)}</small></div></td>
+    <td><div class="platform-cell-main"><b>${escapeHtml(tenant.administratorEmail || "尚未设置")}</b><small>${escapeHtml(tenant.administratorName || "公司管理员")}</small></div>${tenant.administratorEmail ? `<button class="platform-command" type="button" data-platform-copy-admin="${escapeHtml(tenant.administratorEmail)}">复制账号</button>` : ""}</td>
     <td><span class="platform-status ${escapeHtml(tenant.status)}">${escapeHtml(platformStatusLabel(tenant.status))}</span></td>
     <td>${escapeHtml(tenant.planCode)}</td><td>${tenant.activeMemberCount} / ${tenant.seatLimit}</td>
     <td>${tenant.authorizationRevision}</td><td>${escapeHtml(formatTime(tenant.createdAt))}</td>
@@ -6618,13 +6621,13 @@ function renderPlatformOverview() {
     ${platformMetric("启用成员", metrics.activeMemberCount || 0)}${platformMetric("待批支持", metrics.pendingSupportCount || 0)}${platformMetric("今日审计", metrics.todayAuditCount || 0)}
   </div>
   <section class="platform-section"><div class="platform-section-head"><h2>公司运行概况</h2><button class="platform-command" type="button" data-platform-open-tab="tenants">查看全部公司</button></div>
-    <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>公司</th><th>状态</th><th>套餐</th><th>启用成员 / 席位</th><th>授权版本</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${platformTenantRows() || `<tr><td colspan="7" class="platform-empty">暂无公司</td></tr>`}</tbody></table></div>
+    <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>公司</th><th>管理员账号</th><th>状态</th><th>套餐</th><th>启用成员 / 席位</th><th>授权版本</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${platformTenantRows() || `<tr><td colspan="8" class="platform-empty">暂无公司</td></tr>`}</tbody></table></div>
   </section>`;
 }
 
 function renderPlatformTenants() {
   return `<section class="platform-section" style="margin-top:0"><div class="platform-section-head"><h2>公司管理</h2><div class="platform-actions"><span class="platform-status active">${platformTenants.length} 家公司</span>${hasIamCapability("platform.tenant.create") ? `<button class="platform-command primary" type="button" data-platform-create-tenant>创建公司</button>` : ""}</div></div>
-    <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>公司</th><th>状态</th><th>套餐</th><th>启用成员 / 席位</th><th>授权版本</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${platformTenantRows(platformTenants) || `<tr><td colspan="7" class="platform-empty">暂无公司</td></tr>`}</tbody></table></div>
+    <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>公司</th><th>管理员账号</th><th>状态</th><th>套餐</th><th>启用成员 / 席位</th><th>授权版本</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${platformTenantRows(platformTenants) || `<tr><td colspan="8" class="platform-empty">暂无公司</td></tr>`}</tbody></table></div>
   </section>`;
 }
 
@@ -7326,6 +7329,12 @@ function installPlatformOperationEvents() {
   qsa<HTMLButtonElement>("[data-platform-open-tab]").forEach((button) => button.onclick = () => { platformActiveTab = button.dataset.platformOpenTab as PlatformTab; renderPlatformOperations(); });
   qs<HTMLButtonElement>("[data-platform-create-tenant]")?.addEventListener("click", openPlatformTenantCreator);
   qsa<HTMLButtonElement>("[data-platform-bootstrap-admin]").forEach((button) => button.onclick = () => openPlatformTenantAdminCreator(button.dataset.tenantId || ""));
+  qsa<HTMLButtonElement>("[data-platform-copy-admin]").forEach((button) => button.onclick = async () => {
+    const email = button.dataset.platformCopyAdmin || "";
+    if (!email) return;
+    try { await navigator.clipboard.writeText(email); toast("管理员账号已复制", "success"); }
+    catch { toast(`管理员账号：${email}`, "success"); }
+  });
   qs<HTMLButtonElement>("[data-platform-ai-pool-create]")?.addEventListener("click", () => openPlatformAiPoolEditor());
   qsa<HTMLButtonElement>("[data-platform-ai-pool-edit]").forEach((button) => button.onclick = () => openPlatformAiPoolEditor(button.dataset.platformAiPoolEdit || ""));
   qsa<HTMLButtonElement>("[data-platform-ai-pool-sync]").forEach((button) => button.onclick = () => void runPlatformMutation(
