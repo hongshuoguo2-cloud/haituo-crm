@@ -19,6 +19,13 @@ export interface ZhongkeyModel {
   description: string;
   protocols: string[];
   groups: string[];
+  quotaType: number;
+}
+
+export interface ZhongkeyServiceStatus {
+  quotaPerUnit: number;
+  displayInCurrency: boolean;
+  quotaDisplayType: string;
 }
 
 function safeNumber(value: unknown) {
@@ -114,10 +121,65 @@ export async function fetchZhongkeyModels(
       id,
       description: String(item.description || "").trim(),
       protocols: Array.isArray(item.supported_endpoint_types) ? item.supported_endpoint_types.map(String) : [],
-      groups: Array.isArray(item.enable_groups) ? item.enable_groups.map(String) : []
+      groups: Array.isArray(item.enable_groups) ? item.enable_groups.map(String) : [],
+      quotaType: safeNumber(item.quota_type)
     }];
   }).filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
     .sort((left, right) => left.id.localeCompare(right.id, "en"));
+}
+
+export async function fetchZhongkeyServiceStatus(fetcher: typeof fetch = fetch): Promise<ZhongkeyServiceStatus> {
+  const response = await fetcher(`${zhongkeyApiRoot()}/api/status`, { method: "GET", signal: AbortSignal.timeout(15_000) });
+  const payload = await jsonResponse(response, "中科云计费参数") as Record<string, unknown>;
+  const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : payload;
+  return {
+    quotaPerUnit: safeNumber(data.quota_per_unit) || 500_000,
+    displayInCurrency: safeBoolean(data.display_in_currency),
+    quotaDisplayType: String(data.quota_display_type || "USD")
+  };
+}
+
+export async function fetchZhongkeyAccessibleModels(
+  apiKey: string,
+  fetcher: typeof fetch = fetch
+): Promise<string[]> {
+  if (!apiKey.trim()) throw new Error("请填写中科云 API Key");
+  const response = await fetcher(`${ZHONGKEY_BASE_URL}/models`, {
+    method: "GET",
+    signal: AbortSignal.timeout(15_000),
+    headers: { authorization: `Bearer ${apiKey.trim()}` }
+  });
+  const payload = await jsonResponse(response, "中科云可用模型查询") as Record<string, unknown>;
+  const data = Array.isArray(payload.data) ? payload.data : [];
+  return [...new Set(data.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const id = String((raw as Record<string, unknown>).id || "").trim();
+    return id ? [id] : [];
+  }))].sort((left, right) => left.localeCompare(right, "en"));
+}
+
+export function zhongkeyModelCandidates(catalog: ZhongkeyModel[], accessible: string[], usage: ZhongkeyTokenUsage) {
+  const accessibleSet = new Set(accessible);
+  const limitedSet = usage.modelLimitsEnabled && usage.modelLimits.length ? new Set(usage.modelLimits) : null;
+  const available = catalog
+    .filter((model) => model.quotaType === 0 && model.protocols.includes("openai") && accessibleSet.has(model.id) && (!limitedSet || limitedSet.has(model.id)))
+    .map((model) => model.id);
+  const preferred = ["gpt-5.5", "gpt-5.6-terra", "gpt-5.4", "claude-sonnet-5", "claude-sonnet-4-6"];
+  return [...new Set([...preferred.filter((model) => available.includes(model)), ...available])];
+}
+
+export function applyZhongkeySelfServiceCredit(
+  config: AiModelConfig,
+  usage: ZhongkeyTokenUsage,
+  status: ZhongkeyServiceStatus,
+  retailMultiplier = 10
+) {
+  const quotaPerUnit = Math.max(1, safeNumber(status.quotaPerUnit));
+  const multiplier = Math.max(1, safeNumber(retailMultiplier) || 10);
+  const upstreamCredit = usage.totalGranted / quotaPerUnit;
+  config.upstreamLimitCny = Number(upstreamCredit.toFixed(2));
+  config.retailCreditCny = Number((upstreamCredit * multiplier).toFixed(2));
+  return applyZhongkeyUsage(config, usage);
 }
 
 export function applyZhongkeyUsage(config: AiModelConfig, usage: ZhongkeyTokenUsage, at = new Date().toISOString()) {

@@ -29,10 +29,14 @@ import {
   extractJsonObject
 } from "./ai-model-runtime.js";
 import {
+  applyZhongkeySelfServiceCredit,
   applyZhongkeyUsage,
+  fetchZhongkeyAccessibleModels,
   fetchZhongkeyModels,
+  fetchZhongkeyServiceStatus,
   fetchZhongkeyTokenUsage,
   publicRetailBalance,
+  zhongkeyModelCandidates,
   ZHONGKEY_BASE_URL,
   ZHONGKEY_GUIDE_URL
 } from "./zhongkey-ai-pool.js";
@@ -3989,6 +3993,47 @@ function tenantAiPoolConfig(tenantId: string) {
     .sort((left, right) => Number(right.enabled) - Number(left.enabled) || right.updatedAt.localeCompare(left.updatedAt))[0] || null;
 }
 
+function zhongkeyRetailMultiplier() {
+  const value = Number(process.env.HAITUO_API_RETAIL_MULTIPLIER || 10);
+  return Number.isFinite(value) && value >= 1 && value <= 1_000 ? value : 10;
+}
+
+async function syncTenantAiPoolUsage(config: AiModelConfig) {
+  const usage = await fetchZhongkeyTokenUsage(config.apiKey);
+  if (config.provisioningMode === "self_service") {
+    if (usage.unlimitedQuota) throw new Error("这把 Key 已改为无限额度，无法同步客户销售余额");
+    return applyZhongkeySelfServiceCredit(config, usage, await fetchZhongkeyServiceStatus(), zhongkeyRetailMultiplier());
+  }
+  return applyZhongkeyUsage(config, usage);
+}
+
+function canBindTenantAiPool(user: SessionUser) {
+  return hasIamPermission(user, "system.settings.manage");
+}
+
+function publicTenantAiBalance(user: SessionUser, config: AiModelConfig | null) {
+  const canBind = canBindTenantAiPool(user);
+  if (!config || !config.enabled || !config.apiKey) {
+    return {
+      configured: false,
+      canBind,
+      status: "unavailable" as const,
+      message: canBind ? "粘贴服务商发给你的模型密钥即可自动开通" : "公司尚未开通海拓模型额度，请联系公司管理员"
+    };
+  }
+  return {
+    configured: true,
+    canBind,
+    keyHint: config.apiKey ? `****${config.apiKey.slice(-4)}` : "",
+    status: config.lastUsageStatus === "failed" ? "stale" as const : "ready" as const,
+    providerName: "海拓模型服务",
+    model: config.model,
+    balance: publicRetailBalance(config),
+    lastSyncedAt: config.lastUsageSyncAt || "",
+    message: config.lastUsageStatus === "failed" ? "余额同步暂时延迟，当前显示最近一次数据" : "余额已与模型服务同步"
+  };
+}
+
 function publicPlatformAiPoolConfig(config: AiModelConfig, tenantName = "") {
   return {
     id: config.id,
@@ -4062,6 +4107,11 @@ app.post("/api/platform/v1/ai-pool", requireAuth, asyncRoute(async (req, res) =>
     res.status(400).json({ message: "请填写中科云 API Key" });
     return;
   }
+  const claimed = store.aiModelConfigs.find((item) => item.scope === "tenant_pool" && item.teamId !== body.tenantId && item.apiKey === apiKey);
+  if (claimed) {
+    res.status(409).json({ message: "这把 Key 已经绑定到另一家公司，请为当前公司生成独立 Key" });
+    return;
+  }
   const tenantResult = await getStore().platformOperations!.listTenants(req.user!) as { tenants?: Array<{ id: string; name: string; status: string }> };
   const tenant = (tenantResult.tenants || []).find((item) => item.id === body.tenantId && ["trial", "active"].includes(item.status));
   if (!tenant) {
@@ -4083,6 +4133,7 @@ app.post("/api/platform/v1/ai-pool", requireAuth, asyncRoute(async (req, res) =>
     provider: "zhongkey",
     protocol: "openai-compatible",
     scope: "tenant_pool",
+    provisioningMode: "platform",
     name: `中科云 · ${body.model}`,
     baseUrl: ZHONGKEY_BASE_URL,
     model: body.model,
@@ -4130,7 +4181,7 @@ app.post("/api/platform/v1/ai-pool/:tenantId/sync", requireAuth, asyncRoute(asyn
     return;
   }
   try {
-    applyZhongkeyUsage(config, await fetchZhongkeyTokenUsage(config.apiKey));
+    await syncTenantAiPoolUsage(config);
   } catch (error) {
     config.lastUsageSyncAt = new Date().toISOString();
     config.lastUsageStatus = "failed";
@@ -4143,6 +4194,97 @@ app.post("/api/platform/v1/ai-pool/:tenantId/sync", requireAuth, asyncRoute(asyn
   res.json({ config: publicPlatformAiPoolConfig(config) });
 }));
 
+app.post("/api/ai-balance/bind", requireAuth, asyncRoute(async (req, res) => {
+  if (isPlatformIdentity(req.user!)) {
+    res.status(403).json({ message: "平台运维账号不能绑定公司模型密钥" });
+    return;
+  }
+  if (!canBindTenantAiPool(req.user!)) {
+    res.status(403).json({ message: "请使用公司管理员账号绑定模型密钥" });
+    return;
+  }
+  const body = z.object({ apiKey: z.string().trim().min(12).max(500) }).parse(req.body || {});
+  const claimed = getStore().aiModelConfigs.find((item) => item.scope === "tenant_pool" && item.teamId !== req.user!.teamId && item.apiKey === body.apiKey);
+  if (claimed) {
+    res.status(409).json({ message: "这把 Key 已经被其他公司激活，请向服务商获取新的 Key" });
+    return;
+  }
+  const [usage, status, catalog, accessibleModels] = await Promise.all([
+    fetchZhongkeyTokenUsage(body.apiKey),
+    fetchZhongkeyServiceStatus(),
+    fetchZhongkeyModels(),
+    fetchZhongkeyAccessibleModels(body.apiKey)
+  ]);
+  if (usage.unlimitedQuota) {
+    res.status(400).json({ message: "请让服务商先给这把 Key 设置独立额度上限，不能使用无限额度 Key" });
+    return;
+  }
+  if (usage.totalGranted <= 0) {
+    res.status(400).json({ message: "这把 Key 没有可换算的授予额度，请让服务商重新生成有限额的 Key" });
+    return;
+  }
+  if (usage.expiresAt > 0 && usage.expiresAt <= Math.floor(Date.now() / 1_000)) {
+    res.status(400).json({ message: "这把 Key 已经过期，请向服务商获取新的 Key" });
+    return;
+  }
+  const candidates = zhongkeyModelCandidates(catalog, accessibleModels, usage);
+  if (!candidates.length) {
+    res.status(400).json({ message: "这把 Key 没有可供海拓调用的文本模型，请让服务商检查 Key 的分组和模型限制" });
+    return;
+  }
+  const store = getStore();
+  const existing = tenantAiPoolConfig(req.user!.teamId);
+  const now = new Date().toISOString();
+  const config: AiModelConfig = {
+    id: existing?.id || `aipool_${randomUUID().replaceAll("-", "").slice(0, 40)}`,
+    provider: "zhongkey",
+    protocol: "openai-compatible",
+    scope: "tenant_pool",
+    provisioningMode: "self_service",
+    name: "海拓模型服务",
+    baseUrl: ZHONGKEY_BASE_URL,
+    model: candidates[0],
+    apiKey: body.apiKey,
+    enabled: true,
+    temperature: 0.1,
+    useLeadFinder: true,
+    useWebsiteParse: true,
+    useScoring: true,
+    useEmailDraft: true,
+    useExam: true,
+    lastTestAt: now,
+    lastTestStatus: "untested",
+    lastTestMessage: "正在验证模型调用",
+    upstreamLimitCny: 0,
+    retailCreditCny: 0,
+    upstreamUsageRatio: 0,
+    lastUsageSyncAt: "",
+    lastUsageStatus: "untested",
+    lastUsageMessage: "",
+    ownerId: req.user!.id,
+    teamId: req.user!.teamId,
+    updatedAt: now
+  };
+  applyZhongkeySelfServiceCredit(config, usage, status, zhongkeyRetailMultiplier());
+  let tested: { ok: boolean; message: string } = { ok: false, message: "没有找到可用模型" };
+  for (const model of candidates.slice(0, 6)) {
+    config.model = model;
+    tested = await testAiConfig(config);
+    if (tested.ok) break;
+  }
+  config.lastTestAt = new Date().toISOString();
+  config.lastTestStatus = tested.ok ? "passed" : "failed";
+  config.lastTestMessage = tested.message;
+  if (!tested.ok) {
+    res.status(400).json({ message: "密钥额度读取成功，但模型调用失败，请让服务商检查 Key 的分组权限" });
+    return;
+  }
+  if (existing) Object.assign(existing, config);
+  else store.aiModelConfigs.unshift(config);
+  await store.persist();
+  res.status(201).json(publicTenantAiBalance(req.user!, config));
+}));
+
 app.get("/api/ai-balance", requireAuth, asyncRoute(async (req, res) => {
   if (isPlatformIdentity(req.user!)) {
     res.status(403).json({ message: "平台运维账号请在模型池中查看公司额度" });
@@ -4151,13 +4293,13 @@ app.get("/api/ai-balance", requireAuth, asyncRoute(async (req, res) => {
   const config = tenantAiPoolConfig(req.user!.teamId);
   if (!config || !config.enabled || !config.apiKey) {
     res.setHeader("Cache-Control", "no-store");
-    res.json({ configured: false, status: "unavailable", message: "公司尚未开通海拓模型额度" });
+    res.json(publicTenantAiBalance(req.user!, null));
     return;
   }
   const lastSync = config.lastUsageSyncAt ? new Date(config.lastUsageSyncAt).getTime() : 0;
   if (!lastSync || Date.now() - lastSync >= 60_000) {
     try {
-      applyZhongkeyUsage(config, await fetchZhongkeyTokenUsage(config.apiKey));
+      await syncTenantAiPoolUsage(config);
     } catch (error) {
       config.lastUsageSyncAt = new Date().toISOString();
       config.lastUsageStatus = "failed";
@@ -4165,15 +4307,7 @@ app.get("/api/ai-balance", requireAuth, asyncRoute(async (req, res) => {
     }
   }
   res.setHeader("Cache-Control", "no-store");
-  res.json({
-    configured: true,
-    status: config.lastUsageStatus === "failed" ? "stale" : "ready",
-    providerName: "海拓模型服务",
-    model: config.model,
-    balance: publicRetailBalance(config),
-    lastSyncedAt: config.lastUsageSyncAt || "",
-    message: config.lastUsageStatus === "failed" ? "余额同步暂时延迟，当前显示最近一次数据" : "余额已与模型服务同步"
-  });
+  res.json(publicTenantAiBalance(req.user!, config));
 }));
 
 app.get("/api/iam/capabilities", requireAuth, asyncRoute(async (req, res) => {
@@ -14841,6 +14975,7 @@ app.post("/api/tools/ai-config", requireAuth, asyncRoute(async (req, res) => {
     provider: body.provider,
     protocol: body.protocol,
     scope: "personal",
+    provisioningMode: "platform",
     name: body.name,
     baseUrl,
     model: body.model,

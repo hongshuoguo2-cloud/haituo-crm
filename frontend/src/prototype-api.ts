@@ -254,6 +254,8 @@ interface PlatformAiPoolConfig {
 
 interface ApiBalanceView {
   configured: boolean;
+  canBind?: boolean;
+  keyHint?: string;
   status: "ready" | "stale" | "unavailable";
   providerName?: string;
   model?: string;
@@ -3568,7 +3570,7 @@ let platformOperators: PlatformOperator[] = [];
 let platformHealthServices: Array<Record<string, unknown>> = [];
 let platformAuditEvents: PlatformAuditEvent[] = [];
 let platformAiPoolConfigs: PlatformAiPoolConfig[] = [];
-let platformAiPoolModels: Array<{ id: string; description: string; protocols: string[]; groups: string[] }> = [];
+let platformAiPoolModels: Array<{ id: string; description: string; protocols: string[]; groups: string[]; quotaType: number }> = [];
 let apiBalanceView: ApiBalanceView | null = null;
 let apiBalanceRefreshTimer = 0;
 let approvalWorkflows: ApprovalWorkflow[] = [];
@@ -6598,7 +6600,13 @@ function renderApiBalance() {
   const usage = qs<HTMLElement>("#apiBalanceUsage");
   const model = qs<HTMLElement>("#apiBalanceModel");
   const progress = qs<HTMLElement>("#apiBalanceProgress");
+  const bindPanel = qs<HTMLElement>("#apiBalanceBindPanel");
+  const bindTitle = qs<HTMLElement>("#apiBalanceBindTitle");
+  const keyInput = qs<HTMLInputElement>("#apiBalanceKeyInput");
   if (!status || !available || !message || !usage || !model || !progress) return;
+  if (bindPanel) bindPanel.hidden = !view?.canBind;
+  if (bindTitle) bindTitle.textContent = view?.configured ? "更换模型密钥" : "激活模型额度";
+  if (keyInput) keyInput.placeholder = view?.configured && view.keyHint ? `当前已绑定 ${view.keyHint}，粘贴新 Key 可更换` : "粘贴服务商发给你的 sk- 密钥";
   status.className = "haituo-balance-status";
   if (!view) {
     status.textContent = "正在同步";
@@ -6637,6 +6645,30 @@ async function refreshApiBalance(showToast = false) {
     apiBalanceView = { configured: false, status: "unavailable", message: error instanceof Error ? error.message : "余额读取失败" };
     renderApiBalance();
     if (showToast) toast(apiBalanceView.message, "error");
+  }
+}
+
+async function bindApiBalanceKey(button: HTMLButtonElement) {
+  const input = qs<HTMLInputElement>("#apiBalanceKeyInput");
+  const apiKey = input?.value.trim() || "";
+  if (apiKey.length < 12) {
+    toast("请粘贴完整的模型密钥", "error");
+    input?.focus();
+    return;
+  }
+  const original = button.textContent || "验证并激活";
+  button.disabled = true;
+  button.textContent = "正在验证密钥";
+  try {
+    apiBalanceView = await api<ApiBalanceView>("/api/ai-balance/bind", { method: "POST", body: JSON.stringify({ apiKey }) });
+    if (input) input.value = "";
+    renderApiBalance();
+    toast("模型密钥已激活，API 余额已自动同步", "success");
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "模型密钥激活失败", "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
   }
 }
 
@@ -7074,7 +7106,7 @@ async function refreshPlatformOperations() {
   if (hasIamCapability("platform.audit.read")) calls.push(api<{ events: PlatformAuditEvent[] }>("/api/platform/v1/audit?limit=100").then((data) => { platformAuditEvents = data.events || []; }));
   if (hasIamCapability("platform.tenant.plan.manage")) {
     calls.push(api<{ configs: PlatformAiPoolConfig[] }>("/api/platform/v1/ai-pool").then((data) => { platformAiPoolConfigs = data.configs || []; }));
-    if (!platformAiPoolModels.length) calls.push(api<{ models: Array<{ id: string; description: string; protocols: string[]; groups: string[] }> }>("/api/platform/v1/ai-pool/catalog").then((data) => { platformAiPoolModels = data.models || []; }));
+    if (!platformAiPoolModels.length) calls.push(api<{ models: Array<{ id: string; description: string; protocols: string[]; groups: string[]; quotaType: number }> }>("/api/platform/v1/ai-pool/catalog").then((data) => { platformAiPoolModels = data.models || []; }));
   }
   const results = await Promise.allSettled(calls);
   const failed = results.find((result) => result.status === "rejected");
@@ -7110,7 +7142,7 @@ function openPlatformAiPoolEditor(tenantId = "") {
   const tenantOptions = platformTenants
     .filter((tenant) => ["trial", "active"].includes(tenant.status))
     .map((tenant) => `<option value="${escapeHtml(tenant.id)}" ${tenant.id === (current?.tenantId || tenantId) ? "selected" : ""}>${escapeHtml(tenant.name)}</option>`).join("");
-  const openaiModels = platformAiPoolModels.filter((model) => !model.protocols.length || model.protocols.includes("openai"));
+  const openaiModels = platformAiPoolModels.filter((model) => model.quotaType === 0 && (!model.protocols.length || model.protocols.includes("openai")));
   const modelOptions = openaiModels.map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === current?.model ? "selected" : ""}>${escapeHtml(model.id)}</option>`).join("");
   const selectedModel = current?.model || openaiModels.find((item) => item.id === "gpt-5.6-terra")?.id || openaiModels[0]?.id || "gpt-5.6-terra";
   openModal(current ? "编辑模型池额度" : "发放模型额度", `<div class="form-grid">
@@ -32308,6 +32340,7 @@ function installEvents() {
     button.textContent = "同步中";
     void refreshApiBalance(true).finally(() => { button.disabled = false; button.textContent = original; });
   });
+  qs<HTMLButtonElement>("#apiBalanceBindButton")?.addEventListener("click", (event) => void bindApiBalanceKey(event.currentTarget as HTMLButtonElement));
   qs<HTMLButtonElement>("#prospectRadarCloseButton")?.addEventListener("click", closeProspectRadar);
   qs<HTMLButtonElement>("#prospectRadarPlayButton")?.addEventListener("click", (event) => {
     const button = event.currentTarget as HTMLButtonElement;

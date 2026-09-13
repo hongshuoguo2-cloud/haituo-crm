@@ -23273,6 +23273,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
  .haituo-balance-progress{height:10px;max-width:680px;margin:18px 0 22px;overflow:hidden;border-radius:999px;background:#e8eef0}
  .haituo-balance-progress i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#0f8f91,#22b49c);transition:width .25s ease}
  .haituo-balance-status.is-stale{background:#fff1d4;color:#885e00}.haituo-balance-status.is-error{background:#f8e6e8;color:#9a3445}
+ .haituo-key-bind{margin-top:20px;padding:20px;border:1px solid #d6e7e5;border-radius:14px;background:#f5faf9}.haituo-key-bind h2{margin:0 0 6px;font-size:17px}.haituo-key-bind p{margin:0 0 14px;font-size:13px}.haituo-key-bind-row{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:10px;max-width:760px}.haituo-key-bind-row input{width:100%;min-height:42px;padding:0 13px;border:1px solid #cad8d6;border-radius:8px;font:inherit}.haituo-key-bind-row input:focus{outline:3px solid var(--brand-ring);border-color:var(--brand)}.haituo-key-bind small{display:block;margin-top:10px;color:var(--muted,#61717d);line-height:1.6}@media(max-width:680px){.haituo-key-bind-row{grid-template-columns:1fr}}
  #haituoAccountInfo{width:100%;line-height:1.8;min-height:170px}
 </style></head>
 <body>
@@ -26957,6 +26958,12 @@ body.platform-mode .workspace-tabs { display:none !important; }
             <p id="apiBalanceMessage">正在读取海拓模型服务额度。</p>
             <div class="haituo-balance-progress"><i id="apiBalanceProgress"></i></div>
             <button class="btn primary" type="button" id="apiBalanceRefresh">刷新余额</button>
+            <section class="haituo-key-bind" id="apiBalanceBindPanel" hidden>
+              <h2 id="apiBalanceBindTitle">激活模型额度</h2>
+              <p>把服务商发给你的模型密钥粘贴到这里，系统会自动识别模型、同步余额并立即启用。</p>
+              <div class="haituo-key-bind-row"><input id="apiBalanceKeyInput" type="password" autocomplete="off" placeholder="粘贴服务商发给你的 sk- 密钥"><button class="btn primary" type="button" id="apiBalanceBindButton">验证并激活</button></div>
+              <small>密钥只需输入一次，将加密保存在云服务器；页面不会显示完整密钥。公司其他成员无需重复配置。</small>
+            </section>
           </section>
           <div class="haituo-balance-grid"><section class="haituo-balance-panel"><h2>额度用量</h2><p id="apiBalanceUsage">正在查询。</p></section><section class="haituo-balance-panel"><h2>模型服务</h2><p id="apiBalanceModel">正在查询。</p></section></div>
         </div>

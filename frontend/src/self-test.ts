@@ -362,8 +362,10 @@ assert.equal(productConfig.productName, "海拓 · 外贸客户工作台");
 assert.match(productConfig.version || "", /^\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?$/);
 assert.match(prototype, /data-platform-tab="ai-pool"/, "平台运维必须提供公司模型池入口");
 assert.match(prototype, /id="apiBalanceAvailable"/, "用户工作台必须展示 API 销售余额");
+assert.match(prototype, /id="apiBalanceKeyInput"/, "公司管理员必须可以在 API 余额页自助绑定模型密钥");
 assert.match(apiLayer, /\/api\/platform\/v1\/ai-pool/, "平台运维必须通过模型池接口发放额度");
 assert.match(apiLayer, /\/api\/ai-balance/, "用户工作台必须从服务端同步 API 销售余额");
+assert.match(apiLayer, /\/api\/ai-balance\/bind/, "公司管理员绑定密钥后必须自动激活余额");
 assert.equal(prototype.includes("计费服务尚未接入"), false, "API 余额页面不能继续显示占位文案");
 
 assert.equal(isLeadSourceExecutable({ id: "ready", ready: true, enabled: true, accessMode: "api" }), true);

@@ -3581,6 +3581,7 @@ export interface AiModelConfig {
   provider: string;
   protocol: "openai-compatible" | "anthropic" | "gemini";
   scope?: "personal" | "tenant_pool";
+  provisioningMode?: "platform" | "self_service";
   name: string;
   baseUrl: string;
   model: string;
