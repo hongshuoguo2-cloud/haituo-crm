@@ -96,9 +96,6 @@
           <button data-view="approval-center" title="审批中心">
             <svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/></svg><span>审批中心</span><em id="approvalNavCount" hidden>0</em>
           </button>
-          <button data-view="integration-center" title="集成中心">
-            <svg viewBox="0 0 24 24"><path d="M8 3v4M16 3v4"/><path d="M5 7h14v3a7 7 0 0 1-14 0V7Z"/><path d="M12 17v4"/><path d="M9 21h6"/></svg><span>集成中心</span><em>连接</em>
-          </button>
         </div>
 
         <details class="nav-section" aria-label="客户管理" open>
@@ -117,22 +114,11 @@
             <button class="nav-secondary-button" data-view="reminders" title="跟进提醒"><span>跟进提醒</span></button>
             <button class="nav-secondary-button" data-view="memos" title="备忘录"><span>备忘录</span></button>
             <button class="nav-secondary-button" data-view="documents" title="单据平台"><span>单据平台</span></button>
-            <button class="nav-secondary-button" data-view="commission" title="提成对账"><span>提成对账</span></button>
             <button class="nav-secondary-button" data-view="reports" title="报表"><span>报表</span></button>
             <button class="nav-secondary-button" data-view="shipments" title="发货跟踪"><span>发货跟踪</span></button>
             <button class="nav-secondary-button" data-view="global-map" title="全球航线"><span>全球航线</span></button>
             <button class="nav-secondary-button" data-view="email-return-flow" title="开发信回流"><span>开发信回流</span></button>
             <button class="nav-secondary-button" data-view="tools" title="小工具"><span>小工具</span></button>
-          </div>
-        </details>
-
-        <details class="nav-section" aria-label="知识协作">
-          <summary class="nav-section-title"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/><path d="M8 7h8"/><path d="M8 11h6"/></svg><span>知识协作</span><i class="nav-chevron"></i></summary>
-          <div class="nav-secondary-grid">
-            <button class="nav-secondary-button" data-view="knowledge" title="资料维护"><span>资料维护</span></button>
-            <button class="nav-secondary-button" data-view="exam" title="在线考试"><span>在线考试</span></button>
-            <button class="nav-secondary-button" data-view="wecom" title="企业微信"><span>企业微信</span></button>
-            <button class="nav-secondary-button" data-view="daily-reports" title="团队日报"><span>团队日报</span></button>
           </div>
         </details>
 
@@ -187,10 +173,7 @@
               <option value="搜客"></option>
               <option value="AI配置"></option>
               <option value="商机"></option>
-              <option value="提成对账"></option>
               <option value="待办"></option>
-              <option value="考试"></option>
-              <option value="资料"></option>
               <option value="报表"></option>
               <option value="备忘录"></option>
             </datalist>
@@ -525,7 +508,7 @@
                   <span class="lead-settings-title">来源与执行设置</span>
                   <em class="lead-settings-note">（免费源效果可能不佳，默认不勾选）</em>
                 </summary>
-                <div class="lead-field"><label>单次目标数量</label><select id="leadLimit"><option>10</option><option selected>20</option><option>30</option></select></div>
+                <div class="lead-field"><label>单次目标数量</label><select id="leadLimit"><option selected>10</option><option>20</option><option>30</option></select></div>
                 <div class="lead-source-box">
                   <div class="lead-source-head"><b>获客数据源</b><button class="btn tiny" id="leadSourceManageInline" type="button">配置</button></div>
                   <div class="lead-source-chips" id="leadSourceChips"><span class="empty-inline">数据源加载中…</span></div>
@@ -578,9 +561,9 @@
             </div>
           </section>
 
-              <details class="panel section lead-queue-panel" id="leadFinderHistoryPanel">
+              <details class="panel section lead-queue-panel" id="leadFinderHistoryPanel" open>
               <summary class="section-head">
-                <div class="section-title"><div><h2>最近任务</h2></div></div>
+                <div class="section-title"><div><h2>搜索历史</h2></div></div>
                 <div class="section-head-actions">
                   <span class="lead-queue-live">自动更新</span>
                   <span class="section-caret" aria-hidden="true"></span>
@@ -799,7 +782,7 @@
               </div>
               <div class="prospect-toolbar prospect-toolbar-v2">
                 <label class="prospect-search-field"><span>搜索候选</span><input id="prospectSearchInput" placeholder="公司、国家、业务或邮箱"></label>
-                <label class="prospect-sort-field"><span>排序</span><select id="prospectSortSelect"><option value="joined_desc">最新加入</option><option value="joined_asc">最早加入</option><option value="priority">行动优先级</option><option value="status_changed">最近状态变化</option></select></label>
+                <label class="prospect-sort-field"><span>排序</span><select id="prospectSortSelect"><option value="priority" selected>采购意向优先</option><option value="joined_desc">最新加入</option><option value="joined_asc">最早加入</option><option value="status_changed">最近状态变化</option></select></label>
                 <span class="prospect-total" id="prospectTotalCount">0 条候选</span>
               </div>
               <div class="prospect-date-toolbar">
@@ -2485,7 +2468,7 @@
         <div class="view" id="profile">
           <div class="page-head">
             <div><h1>个人主页</h1></div>
-            <div class="head-actions"><button class="btn" id="profileRefreshButton">刷新资料</button><button class="btn" id="profileDomainAuthButton">域名检测</button><button class="btn" id="profileTestSmtpButton">发送测试邮件</button><button class="btn danger" id="profileClearEmailButton">清空邮箱绑定</button><button class="btn primary" id="profileSaveButton">保存个人资料</button></div>
+            <div class="head-actions"><button class="btn" id="profileExportDataButton">导出数据</button><button class="btn" id="profileRefreshButton">刷新资料</button><button class="btn" id="profileDomainAuthButton">域名检测</button><button class="btn" id="profileTestSmtpButton">发送测试邮件</button><button class="btn danger" id="profileClearEmailButton">清空邮箱绑定</button><button class="btn primary" id="profileSaveButton">保存个人资料</button></div>
           </div>
 
           <div class="profile-grid">
@@ -2548,6 +2531,14 @@
                 <div class="form-field"><label>加密方式</label><select id="profileImapSecure"><option value="true">SSL/TLS（993）</option><option value="false">STARTTLS/普通（143）</option></select></div>
                 <div class="form-field"><label>最近同步</label><b id="profileImapSyncStatus" class="field-value">尚未同步</b></div>
                 <div class="form-field full"><div class="row-actions"><button class="btn" id="profileTestImapButton" type="button">测试 IMAP</button><button class="btn" id="profileClearImapButton" type="button">清除 IMAP 密码</button></div></div>
+              </div>
+            </section>
+
+            <section class="panel section profile-local-data-panel">
+              <div class="section-head"><div class="section-title"><span class="icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span><div><h2>本机数据</h2><small>业务数据保存在安装海拓的电脑中，可随时导出一份个人备份</small></div></div><button class="btn primary" id="profileExportDataInlineButton" type="button">选择位置并导出</button></div>
+              <div class="profile-info-list">
+                <div class="profile-info-row"><span>保存位置</span><b>C:\HaituoData（本机）</b></div>
+                <div class="profile-info-row"><span>导出格式</span><b>JSON 完整数据包</b></div>
               </div>
             </section>
 
@@ -3298,11 +3289,8 @@
         ["communication", "whatsapp"], ["whatsapp", "whatsapp"], ["聊天", "whatsapp"],
         ["搜客", "lead-finder"], ["获客", "lead-finder"], ["lead", "lead-finder"], ["prospect", "lead-finder"],
         ["ai agent", "ai-agent"], ["智能体", "ai-agent"], ["ai", "ai-config"], ["gpt", "ai-config"], ["模型", "ai-config"], ["apikey", "ai-config"], ["api key", "ai-config"],
-        ["集成", "integration-center"], ["连接器", "integration-center"], ["mcp", "integration-center"], ["integration", "integration-center"],
         ["商机", "pipeline"], ["pipeline", "pipeline"],
         ["待办", "dashboard"], ["todo", "dashboard"], ["工作台", "dashboard"],
-        ["考试", "exam"], ["exam", "exam"],
-        ["资料", "knowledge"], ["knowledge", "knowledge"],
         ["报表", "reports"], ["report", "reports"],
         ["单据", "documents"], ["发票", "documents"], ["pi", "documents"], ["ci", "documents"], ["invoice", "documents"], ["document", "documents"],
         ["备忘", "memos"], ["memo", "memos"]

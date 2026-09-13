@@ -216,6 +216,35 @@ function signalScore(candidate: WebsiteOpportunity) {
   return 0;
 }
 
+function discoveryPriorityScore(candidate: WebsiteOpportunity) {
+  const report = ensureProspectVerificationReport(candidate).verificationReport;
+  const levelScore = ({ L0: 0, L1: 5, L2: 10, L3: 16, L4: 22, L5: 28 } as const)[report?.level || "L0"];
+  const evidence = candidate.sourceEvidence || [];
+  const sourceScore = evidence.reduce((best, item) => Math.max(best,
+    item.sourceLevel === "business_signal" ? 24
+      : item.sourceLevel === "official" ? 20
+        : item.sourceLevel === "corroborated" ? 15
+          : item.sourceLevel === "discovery" ? 8 : 4
+  ), 0);
+  const matchedFieldScore = Math.min(12, new Set(evidence.flatMap((item) => item.matchedFields || [])).size * 2);
+  const latestProbe = [...(candidate.websiteProbeAttempts || [])]
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  const probeScore = latestProbe?.outcome === "evidence_found" ? 14
+    : latestProbe?.status === "completed" ? 5 : 0;
+  const description = `${candidate.business || ""} ${candidate.description || ""}`.toLowerCase();
+  const intentScore = /\b(?:rfq|rfi|tender|procurement|purchase|purchasing|sourcing|buyer|importer|distributor|dealer)\b|采购|询价|招标|求购|进口商|经销商/u.test(description) ? 12 : 0;
+  const completenessScore = (candidate.website ? 5 : 0)
+    + (candidate.business ? 5 : 0)
+    + (candidate.country ? 4 : 0)
+    + (candidate.description ? 4 : 0)
+    + (candidate.contact ? 6 : 0)
+    + (candidate.contactInfo ? 10 : 0);
+  const parseScore = candidate.parseMode === "ai" ? 5
+    : candidate.parseMode === "reference" ? 3
+      : candidate.parseMode === "rule" ? 2 : 0;
+  return Math.min(100, 12 + levelScore + sourceScore + matchedFieldScore + probeScore + intentScore + completenessScore + parseScore);
+}
+
 function hasActiveSuppression(
   store: CrmStore,
   candidate: WebsiteOpportunity,
@@ -266,11 +295,15 @@ export function buildProspectScorecard(
     ? component(0, "blocked", ["COMPLIANCE_BLOCKED"])
     : contactScore(store, candidate, generatedAt);
   const purchaseSignal = signalScore(candidate);
+  const formalPriorityScore = enterpriseConfidence.score * 0.25
+    + icpMatch.score * 0.35
+    + contactReadiness.score * 0.25
+    + purchaseSignal * 0.15;
+  const rankedPriorityScore = complianceBlocked
+    ? 0
+    : Math.max(formalPriorityScore, discoveryPriorityScore(candidate));
   const actionPriority = component(
-    enterpriseConfidence.score * 0.25
-      + icpMatch.score * 0.35
-      + contactReadiness.score * 0.25
-      + purchaseSignal * 0.15,
+    rankedPriorityScore,
     enterpriseConfidence.status === "blocked"
       || icpMatch.status === "blocked"
       || contactReadiness.status === "blocked"
@@ -282,6 +315,7 @@ export function buildProspectScorecard(
         : "partial",
     [
       ...(purchaseSignal ? ["PURCHASE_OR_ENGAGEMENT_SIGNAL_FOUND"] : ["PURCHASE_SIGNAL_MISSING"]),
+      ...(!purchaseSignal && rankedPriorityScore > formalPriorityScore ? ["DISCOVERY_EVIDENCE_RANKED"] : []),
       ...(complianceBlocked ? ["COMPLIANCE_BLOCKED"] : [])
     ]
   );

@@ -7,6 +7,8 @@ import {
 import { prospectSuperSearchConvergenceReason } from "./prospect-super-search.js";
 import { probableOfficialWebsite } from "./lead-providers.js";
 import { webDiscoveryWebsite } from "./prospect-candidate-pipeline.js";
+import { buildProspectScorecard } from "./prospect-scorecard.js";
+import { memoryStore } from "./store.js";
 import {
   createProspectDeepMiningState,
   planProspectDeepMiningRound,
@@ -140,6 +142,19 @@ function run() {
     "https://www.example.com"
   );
   assert.equal(webDiscoveryWebsite("company", "https://registry.example/record/1"), "");
+  const weakCandidate = candidate("score-weak", "score-team", 0, false);
+  weakCandidate.business = "industrial components";
+  weakCandidate.description = "directory result";
+  const strongCandidate = candidate("score-strong", "score-team", 0, true);
+  strongCandidate.contact = "Procurement Team";
+  strongCandidate.contactInfo = "buyer@example.com";
+  strongCandidate.description = "active procurement tender and buyer request";
+  strongCandidate.sourceEvidence![0]!.sourceLevel = "business_signal";
+  strongCandidate.sourceEvidence![0]!.matchedFields.push("contactInfo", "business");
+  const weakPriority = buildProspectScorecard(memoryStore, weakCandidate).actionPriority.score;
+  const strongPriority = buildProspectScorecard(memoryStore, strongCandidate).actionPriority.score;
+  assert.ok(weakPriority > 6, "发现阶段候选不应全部固定为 6 分");
+  assert.ok(strongPriority > weakPriority, "采购信号和资料完整度更高的候选应排在前面");
   const providerQueries = buildProspectProviderResolvedQueries({
     resolvedQuery: query,
     providerIds: ["web_search", "google_places", "procurement_tenders", "companies_house", "ai_search"],

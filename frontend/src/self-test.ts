@@ -104,7 +104,6 @@ const required = [
   "来源证据",
   "sourceEvidence",
   "ai_search",
-  "data-view=\"commission\"",
   "id=\"commission\"",
   "commissionSyncDealsButton",
   "commissionRecalculateButton",
@@ -126,7 +125,6 @@ const required = [
   "可审计动作链",
   "最近执行记录",
   "agentFailureDiagnosis",
-  "data-view=\"integration-center\"",
   "aria-label=\"权限管理\"",
   "data-admin-only",
   "id=\"integration-center\"",
@@ -183,6 +181,15 @@ assert.match(apiLayer, /deckTicker\.innerHTML = logs\.length \? seq \+ seq : seq
 for (const token of required) {
   if (!prototype.includes(token) && !apiLayer.includes(token)) throw new Error(`missing ${token}`);
 }
+
+assert.equal(prototypeMarkup.includes('data-view="integration-center"'), false, "暂不可用的集成中心不得出现在导航中");
+assert.equal(prototypeMarkup.includes('data-view="commission"'), false, "提成对账不得出现在业务工具导航中");
+assert.equal(prototypeMarkup.includes('aria-label="知识协作"'), false, "个人版不得显示知识协作导航分组");
+assert.match(prototypeMarkup, /id="leadLimit"><option selected>10<\/option>/u, "自动获客单次目标数量必须默认 10 条");
+assert.match(apiLayer, /selectedLeadFinderResultJobId/u, "自动获客必须能够切换并查看历史搜索结果");
+assert.match(apiLayer, /data-qualification-skip/u, "跟进前检查必须提供逐项跳过操作");
+assert.match(apiLayer, /showSaveFilePicker/u, "个人设置必须支持选择本机位置导出数据");
+assert.match(apiLayer, /openBackgroundResearchPicker/u, "公司背调必须先提供可用的公司选择入口");
 
 assert.equal(prototype.includes("data-view=\"inbox\""), false, "消息通知不应出现在左侧导航");
 assert.equal(prototype.includes("写站内信"), false, "通知中心不应提供人工写信入口");

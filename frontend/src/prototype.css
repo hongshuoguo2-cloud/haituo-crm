@@ -7098,6 +7098,21 @@
 
     .prospect-qualification-summary-item.passed::before { background: #15805d; }
     .prospect-qualification-summary-item.current::before { background: var(--td-brand-color, #0052d9); }
+    .prospect-qualification-summary-item.skipped { padding-right: 54px; background: #f8fafc; }
+    .prospect-qualification-summary-item.skipped::before { background: #94a3b8; }
+    .prospect-qualification-summary-item > button {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 2px 7px;
+      border: 1px solid #d8e0ea;
+      border-radius: 5px;
+      color: #526177;
+      background: #fff;
+      font-size: 9px;
+      cursor: pointer;
+    }
+    .prospect-qualification-summary-item > button:hover { color: var(--td-brand-color, #0052d9); border-color: var(--td-brand-color, #0052d9); }
 
     .prospect-qualification-summary-item span,
     .prospect-qualification-summary-item b,
@@ -9367,6 +9382,8 @@
       border-radius: 0 3px 3px 0;
       background: var(--lf-accent);
     }
+
+    .lead-job-card.is-result-view { background: var(--lf-accent-soft, #f2f7ff); }
 
     .lead-job-top {
       display: grid;

@@ -23,7 +23,7 @@ const skillManifestSchema = z.object({
   installCommand: z.string().max(1000).default(""),
   acquisitionInstructions: z.string().max(3000).default(""),
   homepageUrl: z.string().trim().max(2048).refine((value) => !value || /^https:\/\//iu.test(value), "homepageUrl 必须使用 HTTPS").default(""),
-  author: z.string().max(120).default("GoodJob"),
+  author: z.string().max(120).default("海拓"),
   license: z.string().max(120).default("内部使用")
 }).strict();
 

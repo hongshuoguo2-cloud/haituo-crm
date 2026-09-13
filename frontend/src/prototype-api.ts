@@ -3461,7 +3461,7 @@ const state: AppState = {
   prospectJoinedRange: "all",
   prospectJoinedFrom: "",
   prospectJoinedTo: "",
-  prospectSort: "joined_desc",
+  prospectSort: "priority",
   prospectPage: 1,
   prospectAssignees: [],
   prospectQualifications: {},
@@ -3484,6 +3484,7 @@ let memoMobileDetailOpen = false;
 let memoDeleteBusy = false;
 const resolvedMemoDrafts = new Set<string>();
 let leadFinderJobs: LeadFinderJob[] = [];
+let selectedLeadFinderResultJobId = "";
 let leadProvidersLoadedAt = 0;
 let leadProvidersInFlight: Promise<void> | null = null;
 const prospectQualificationLoading = new Set<string>();
@@ -6229,6 +6230,109 @@ function renderProfile(user = state.user) {
   updateProfileSmtpHints(user);
   renderEmailConfigurationReminders();
   void loadCompanyProfile();
+}
+
+function localBusinessDataExport() {
+  const user = state.user;
+  return {
+    product: "海拓 CRM",
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    storage: { mode: "local", dataDirectory: "C:\\HaituoData" },
+    account: user ? {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      outboundEmail: user.outboundEmail || "",
+      emailSenderName: user.emailSenderName || "",
+      emailSignature: user.emailSignature || ""
+    } : null,
+    data: {
+      customers: state.customers,
+      leads: state.leads,
+      deletedLeads: state.leadTrash,
+      leadActivities: state.leadActivities,
+      deals: state.deals,
+      closedDeals: state.closedDeals,
+      dealEvents: state.dealEvents,
+      todos: state.todos,
+      reminders: state.reminders,
+      planTasks: state.planTasks,
+      planTemplates: state.planTemplates,
+      memos: state.memos,
+      deletedMemos: state.deletedMemos,
+      searchCandidates: state.websiteOpportunities,
+      searchHistory: leadFinderJobs,
+      prospectSchedules: state.prospectSchedules,
+      outreachSequences: state.outreachSequences,
+      products: state.products,
+      productCategories: state.productCategories,
+      shipments: state.shipments,
+      tradeDocuments: state.tradeDocuments,
+      competitors: state.competitors,
+      caseStudies: state.caseStudies,
+      problems: state.problems,
+      whatsappThreads: state.whatsappThreads,
+      whatsappMessages: state.whatsappMessages,
+      agentRuns: state.agentRuns,
+      agentConversations: state.agentConversations,
+      agentMemories: state.agentMemories,
+      agentKnowledgeDocuments: state.agentKnowledgeDocuments,
+      commissionProducts: state.commissionProducts,
+      commissionRules: state.commissionRules,
+      commissionRecords: state.commissionRecords,
+      commissionCalculations: state.commissionCalculations,
+      commissionItems: state.commissionItems,
+      knowledgeAssets: state.knowledgeAssets
+    }
+  };
+}
+
+async function exportLocalBusinessData(button?: HTMLButtonElement) {
+  const originalText = button?.textContent || "导出数据";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "正在整理";
+  }
+  try {
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+    const suggestedName = `海拓数据备份-${stamp}.json`;
+    const blob = new Blob([JSON.stringify(localBusinessDataExport(), null, 2)], { type: "application/json;charset=utf-8" });
+    const picker = (window as Window & {
+      showSaveFilePicker?: (options: {
+        suggestedName: string;
+        types: Array<{ description: string; accept: Record<string, string[]> }>;
+      }) => Promise<{ createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> }>;
+    }).showSaveFilePicker;
+    if (picker) {
+      const handle = await picker({
+        suggestedName,
+        types: [{ description: "海拓数据备份", accept: { "application/json": [".json"] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    } else {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = suggestedName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+    toast("数据已导出到你选择的位置", "success");
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    toast(error instanceof Error ? error.message : "数据导出失败", "error");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 function collectDevelopmentEmailDraft() {
@@ -10335,6 +10439,35 @@ function backgroundResearchBack() {
     return;
   }
   activateNavView(backView);
+}
+
+function openBackgroundResearchPicker() {
+  const choices = [
+    ...state.leads
+      .filter((lead) => !lead.deletedAt)
+      .map((lead) => ({ value: `lead:${lead.id}`, label: `${lead.company} · 线索` })),
+    ...state.customers
+      .map((customer) => ({ value: `customer:${customer.id}`, label: `${customer.company} · 客户` }))
+  ].sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+  openModal(
+    "选择背调公司",
+    choices.length
+      ? `<div class="form-grid"><div class="form-field full"><label>公司</label><select id="backgroundResearchTarget">${choices.map((choice) => `<option value="${escapeHtml(choice.value)}">${escapeHtml(choice.label)}</option>`).join("")}</select><small>从已有线索或客户中选择，背调结果会关联到原记录。</small></div></div>`
+      : `<div class="empty-cell">当前还没有可背调的线索或客户，请先添加一家公司。</div>`,
+    `<button class="btn" data-modal-close>取消</button>${choices.length ? `<button class="btn primary" id="backgroundResearchTargetConfirm">开始背调</button>` : ""}`
+  );
+  qs<HTMLButtonElement>("#backgroundResearchTargetConfirm")?.addEventListener("click", () => {
+    const [entityType, entityId] = (qs<HTMLSelectElement>("#backgroundResearchTarget")?.value || "").split(":") as [BackgroundResearchEntity, string];
+    const company = entityType === "lead"
+      ? state.leads.find((lead) => lead.id === entityId)?.company
+      : state.customers.find((customer) => customer.id === entityId)?.company;
+    if (!entityId || !company) {
+      toast("请选择要背调的公司", "error");
+      return;
+    }
+    closeModal();
+    openBackgroundResearch(entityType, entityId, company, "tools");
+  });
 }
 
 function renderBackgroundResearch() {
@@ -23089,6 +23222,32 @@ function leadFinderScore(item: WebsiteOpportunity) {
   )));
 }
 
+function prospectPurchaseIntentScore(item: WebsiteOpportunity) {
+  const replyScores: Partial<Record<ProspectReplyClassification, number>> = {
+    clear_demand: 100,
+    interested_nurture: 86,
+    referral: 72,
+    auto_unknown: 46,
+    no_current_demand: 28,
+    rejected: 8,
+    unsubscribed: 0,
+    bounced: 0
+  };
+  const context = state.procurementContexts[item.id];
+  const confirmedSignal = context?.signals
+    .filter((signal) => signal.status === "confirmed")
+    .reduce((best, signal) => Math.max(best, Number(signal.confidence || 0)), 0) || 0;
+  const recommendation = context?.recommendations
+    .filter((row) => ["generated", "linked_existing_deal", "converted_by_user"].includes(row.status))
+    .reduce((best, row) => Math.max(best, Number(row.recommendationScore || 0)), 0) || 0;
+  const reply = item.lastReplyClassification ? replyScores[item.lastReplyClassification] || 0 : 0;
+  const sourceSignal = item.sourceEvidence?.some((evidence) => evidence.sourceLevel === "business_signal") ? 80 : 0;
+  const engagement = item.outreachState === "replied" ? 88
+    : item.outreachState === "awaiting_reply" ? 55
+      : item.lastTouchpointAt ? 42 : 0;
+  return Math.max(leadFinderScore(item), confirmedSignal, recommendation, reply, sourceSignal, engagement);
+}
+
 function leadFinderDuplicateState(item: WebsiteOpportunity) {
   const domain = websiteDomain(item.website);
   const duplicatedCustomer = state.customers.find((customer) => {
@@ -23227,7 +23386,8 @@ async function loadProspectProcurementContext(
       `/api/prospect-list/${encodeURIComponent(item.id)}/procurement-context`
     );
     state.procurementContexts[item.id] = context;
-    if (state.selectedProspectId === item.id) renderProspectDetail(item);
+    if (state.prospectSort === "priority") renderProspectList();
+    else if (state.selectedProspectId === item.id) renderProspectDetail(item);
   } catch (error) {
     if (force) toast(error instanceof Error ? error.message : "读取采购信号失败", "error");
   } finally {
@@ -23392,8 +23552,9 @@ function prospectFilteredRows() {
         const rightChanged = new Date(right.statusChangedAt || right.createdAt).getTime();
         difference = (Number.isFinite(rightChanged) ? rightChanged : 0) - (Number.isFinite(leftChanged) ? leftChanged : 0);
       } else {
-        difference = statusWeight[left.status] - statusWeight[right.status];
-        if (!difference) difference = leadFinderScore(right) - leadFinderScore(left);
+        difference = prospectPurchaseIntentScore(right) - prospectPurchaseIntentScore(left);
+        if (!difference) difference = statusWeight[left.status] - statusWeight[right.status];
+        if (!difference) difference = (rightJoined || 0) - (leftJoined || 0);
       }
       return difference || left.id.localeCompare(right.id);
     });
@@ -23546,12 +23707,44 @@ function qualificationStep(
 }
 
 function qualificationSummaryItem(
+  itemId: string,
+  key: QualificationSkipKey,
   label: string,
   value: string,
   detail: string,
-  tone: "passed" | "current" | "pending"
+  tone: "passed" | "current" | "pending",
+  skipped: boolean
 ) {
-  return `<div class="prospect-qualification-summary-item ${tone}"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(detail)}</small></div>`;
+  const effectiveTone = skipped ? "skipped" : tone;
+  return `<div class="prospect-qualification-summary-item ${effectiveTone}"><span>${escapeHtml(label)}</span><b>${escapeHtml(skipped ? "已跳过" : value)}</b><small>${escapeHtml(skipped ? "本次暂不处理，可随时恢复" : detail)}</small>${tone === "passed" ? "" : `<button type="button" data-qualification-skip="${escapeHtml(key)}" data-candidate-id="${escapeHtml(itemId)}">${skipped ? "恢复" : "跳过"}</button>`}</div>`;
+}
+
+type QualificationSkipKey = "company" | "fit" | "contact";
+
+function qualificationSkipStorageKey() {
+  return `haituo_qualification_skips_${state.user?.id || "local"}`;
+}
+
+function qualificationSkipped(itemId: string, key: QualificationSkipKey) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(qualificationSkipStorageKey()) || "{}") as Record<string, QualificationSkipKey[]>;
+    return Array.isArray(saved[itemId]) && saved[itemId].includes(key);
+  } catch {
+    return false;
+  }
+}
+
+function setQualificationSkipped(itemId: string, key: QualificationSkipKey, skipped: boolean) {
+  let saved: Record<string, QualificationSkipKey[]> = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(qualificationSkipStorageKey()) || "{}") as Record<string, QualificationSkipKey[]>;
+  } catch {
+    saved = {};
+  }
+  const keys = new Set(saved[itemId] || []);
+  if (skipped) keys.add(key); else keys.delete(key);
+  if (keys.size) saved[itemId] = [...keys]; else delete saved[itemId];
+  localStorage.setItem(qualificationSkipStorageKey(), JSON.stringify(saved));
 }
 
 function renderProspectQualificationPanel(item: WebsiteOpportunity) {
@@ -23622,6 +23815,9 @@ function renderProspectQualificationPanel(item: WebsiteOpportunity) {
       : ["verify_channel", "evaluate_contactability", "approve_contactability"].includes(view.nextStep)
         ? "contact"
         : "";
+  const companySkipped = qualificationSkipped(item.id, "company");
+  const fitSkipped = qualificationSkipped(item.id, "fit");
+  const contactSkipped = qualificationSkipped(item.id, "contact");
   return `
     <section class="prospect-qualification-panel" id="prospectQualificationPanel" data-next-step="${escapeHtml(view.nextStep)}">
       <div class="prospect-qualification-head">
@@ -23629,9 +23825,9 @@ function renderProspectQualificationPanel(item: WebsiteOpportunity) {
         ${badge(nextStepReady ? "可以跟进" : "还需确认", nextStepReady ? "green" : "amber")}
       </div>
       <div class="prospect-qualification-summary">
-        ${qualificationSummaryItem("公司可信", companyReady ? "已确认" : currentGroup === "company" ? "现在确认" : "等待确认", companyReady ? "企业主体与经营状态有效" : "名称、官网和登记主体", companyReady ? "passed" : currentGroup === "company" ? "current" : "pending")}
-        ${qualificationSummaryItem("客户匹配", icpPassed ? "已确认" : currentGroup === "fit" ? "现在确认" : "等待确认", icpPassed ? `匹配评分 ${assessment!.totalScore} 分` : "产品、市场和客户类型", icpPassed ? "passed" : currentGroup === "fit" ? "current" : "pending")}
-        ${qualificationSummaryItem("联系方式", contactabilityPassed ? "允许联系" : channelPassed ? "已核对" : currentGroup === "contact" ? "现在确认" : "等待确认", contactabilityPassed && view.approvedChannel ? `${view.approvedChannel.channelType} · ${view.approvedChannel.value}` : "来源、有效性和退订风险", contactabilityPassed || channelPassed ? "passed" : currentGroup === "contact" ? "current" : "pending")}
+        ${qualificationSummaryItem(item.id, "company", "公司可信", companyReady ? "已确认" : currentGroup === "company" ? "现在确认" : "等待确认", companyReady ? "企业主体与经营状态有效" : "名称、官网和登记主体", companyReady ? "passed" : currentGroup === "company" ? "current" : "pending", companySkipped && !companyReady)}
+        ${qualificationSummaryItem(item.id, "fit", "客户匹配", icpPassed ? "已确认" : currentGroup === "fit" ? "现在确认" : "等待确认", icpPassed ? `匹配评分 ${assessment!.totalScore} 分` : "产品、市场和客户类型", icpPassed ? "passed" : currentGroup === "fit" ? "current" : "pending", fitSkipped && !icpPassed)}
+        ${qualificationSummaryItem(item.id, "contact", "联系方式", contactabilityPassed ? "允许联系" : channelPassed ? "已核对" : currentGroup === "contact" ? "现在确认" : "等待确认", contactabilityPassed && view.approvedChannel ? `${view.approvedChannel.channelType} · ${view.approvedChannel.value}` : "来源、有效性和退订风险", contactabilityPassed || channelPassed ? "passed" : currentGroup === "contact" ? "current" : "pending", contactSkipped && !contactabilityPassed && !channelPassed)}
       </div>
       <div class="prospect-qualification-next ${nextStepReady ? "is-ready" : ""}">
         <div><span>${nextStepReady ? "当前状态" : "现在只需"}</span><b>${escapeHtml(nextStepReady ? "可以开始跟进" : nextStepLabels[view.nextStep])}</b><small>${escapeHtml(nextStepDescriptions[view.nextStep])}</small></div>
@@ -25012,6 +25208,16 @@ function renderProspectDetail(item?: WebsiteOpportunity | null) {
     prospectTechnicalAuditOpenId = (event.currentTarget as HTMLDetailsElement).open ? item.id : "";
   });
   bindProspectIdentityBootstrapActions(box, item);
+  qsa<HTMLButtonElement>("[data-qualification-skip]", box).forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.qualificationSkip as QualificationSkipKey;
+      const itemId = button.dataset.candidateId || item.id;
+      const skipped = !qualificationSkipped(itemId, key);
+      setQualificationSkipped(itemId, key, skipped);
+      renderProspectDetail(item);
+      toast(skipped ? "本项检查已跳过，可稍后恢复" : "本项检查已恢复");
+    });
+  });
   bindProspectQualificationActions(box, item);
   qs<HTMLButtonElement>("#prospectContactEnrichmentButton", box)?.addEventListener("click", (event) => void startContactEnrichment(item, event.currentTarget as HTMLButtonElement));
   qs<HTMLButtonElement>("#prospectWebsiteProbeButton", box)?.addEventListener("click", (event) => void startWebsiteProbe(item, event.currentTarget as HTMLButtonElement));
@@ -25635,7 +25841,7 @@ function currentLeadFinderTitle() {
 
 function currentLeadFinderSubtitle() {
   const industry = qs<HTMLInputElement>("#leadIndustryInput")?.value.trim().split(/,|，/)[0]?.trim() || "行业待补充";
-  const limit = qs<HTMLSelectElement>("#leadLimit")?.value || "20";
+  const limit = qs<HTMLSelectElement>("#leadLimit")?.value || "10";
   return `${industry} · 目标 ${limit} 条 · 人工核验后入线索`;
 }
 
@@ -26092,7 +26298,7 @@ function primaryLeadFinderLiveJob() {
 }
 
 function currentLeadFinderResultJob() {
-  return leadFinderJobs[0] || null;
+  return leadFinderJobs.find((job) => job.id === selectedLeadFinderResultJobId) || leadFinderJobs[0] || null;
 }
 
 function currentLeadFinderResults(opportunities = state.websiteOpportunities) {
@@ -27856,7 +28062,7 @@ function renderLeadFinderJobs() {
     return;
   }
   box.innerHTML = leadFinderJobs.map((job) => `
-    <article class="lead-job-card" data-lead-job-id="${escapeHtml(job.id)}">
+    <article class="lead-job-card ${currentLeadFinderResultJob()?.id === job.id ? "is-result-view" : ""}" data-lead-job-id="${escapeHtml(job.id)}">
       <div class="lead-job-top">
         <button class="lead-job-toggle" type="button" data-lead-job-toggle aria-label="${job.expanded ? "收起任务详情" : "展开任务详情"}">${job.expanded ? "▾" : "▸"}</button>
         <div><h3>${escapeHtml(job.title)}</h3><p>${escapeHtml(job.subtitle)}</p></div>
@@ -27872,6 +28078,7 @@ function renderLeadFinderJobs() {
       <div class="lead-job-steps">${job.steps.map((step, index) => `<span>${index + 1} ${escapeHtml(step)}</span>`).join("")}</div>
       ${renderLeadFinderJobDetails(job)}
       <div class="lead-job-actions">
+        <button class="btn ${currentLeadFinderResultJob()?.id === job.id ? "primary" : ""}" type="button" data-lead-job-results>${currentLeadFinderResultJob()?.id === job.id ? "正在查看本次结果" : "查看本次结果"}</button>
         <button class="lead-job-open-hint" type="button" data-lead-job-open><span><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>查看详情</button>
         ${job.backendRunId && job.backendRunStatus === "queued" ? `<button class="btn" data-lead-run-action="pause">暂停任务</button>` : ""}
         ${job.backendRunId && job.backendRunStatus === "paused" ? `<button class="btn primary" data-lead-run-action="resume">恢复任务</button>` : ""}
@@ -27879,6 +28086,17 @@ function renderLeadFinderJobs() {
       </div>
     </article>
   `).join("");
+  qsa<HTMLButtonElement>("[data-lead-job-results]", box).forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.closest<HTMLElement>("[data-lead-job-id]")?.dataset.leadJobId || "";
+      if (!id) return;
+      selectedLeadFinderResultJobId = id;
+      leadFinderResultView = "candidates";
+      renderLeadFinder(state.websiteOpportunities);
+      renderLeadFinderJobs();
+      qs<HTMLElement>("#leadFinderResultRows")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
   qsa<HTMLButtonElement>("[data-lead-job-open]", box).forEach((button) => {
     button.addEventListener("click", () => {
       const id = button.closest<HTMLElement>("[data-lead-job-id]")?.dataset.leadJobId;
@@ -27897,6 +28115,7 @@ function renderLeadFinderJobs() {
   });
   qsa<HTMLButtonElement>("[data-lead-job-pick]").forEach((button) => {
     button.addEventListener("click", () => {
+      selectedLeadFinderResultJobId = button.closest<HTMLElement>("[data-lead-job-id]")?.dataset.leadJobId || selectedLeadFinderResultJobId;
       state.selectedLeadFinderId = button.dataset.leadJobPick || null;
       renderLeadFinder(state.websiteOpportunities);
     });
@@ -28064,7 +28283,8 @@ function createLeadFinderJob(status: LeadFinderJob["status"] = "running") {
     resultIds: [],
     detailLines: buildLeadFinderJobDetails()
   };
-  leadFinderJobs = [job, ...leadFinderJobs].slice(0, 6);
+  leadFinderJobs = [job, ...leadFinderJobs].slice(0, 20);
+  selectedLeadFinderResultJobId = job.id;
   renderLeadFinder(state.websiteOpportunities);
   return job;
 }
@@ -28705,12 +28925,12 @@ async function loadProspectRuns(quiet = false) {
   leadFinderRunsLoading = true;
   try {
     const [list, superList] = await Promise.all([
-      api<{ runs: ProspectRunApiRecord[] }>("/api/prospect-runs?limit=20"),
-      api<{ missions: ProspectSuperSearchMissionApi[] }>("/api/prospect-super-search?limit=6")
+      api<{ runs: ProspectRunApiRecord[] }>("/api/prospect-runs?limit=30"),
+      api<{ missions: ProspectSuperSearchMissionApi[] }>("/api/prospect-super-search?limit=10")
     ]);
     const superRunIds = new Set(superList.missions.flatMap((mission) => mission.rounds.map((round) => round.runId)));
     const detailResults = await Promise.allSettled(
-      list.runs.filter((run) => !superRunIds.has(run.id)).slice(0, 6).map((run) => api<ProspectRunDetailApiResponse>(`/api/prospect-runs/${encodeURIComponent(run.id)}`))
+      list.runs.filter((run) => !superRunIds.has(run.id)).slice(0, 20).map((run) => api<ProspectRunDetailApiResponse>(`/api/prospect-runs/${encodeURIComponent(run.id)}`))
     );
     const backendJobs = detailResults
       .filter((result): result is PromiseFulfilledResult<ProspectRunDetailApiResponse> => result.status === "fulfilled")
@@ -28728,7 +28948,10 @@ async function loadProspectRuns(quiet = false) {
     const localJobs = leadFinderJobs.filter((job) => !job.backendRunId);
     leadFinderJobs = [...superJobs, ...backendJobs, ...localJobs]
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .slice(0, 6);
+      .slice(0, 20);
+    if (!leadFinderJobs.some((job) => job.id === selectedLeadFinderResultJobId)) {
+      selectedLeadFinderResultJobId = leadFinderJobs[0]?.id || "";
+    }
     if ([...backendJobs, ...superJobs].some((job) =>
       ["running", "done", "partial", "failed"].includes(job.status)
       || Boolean(job.resultIds?.length)
@@ -29876,14 +30099,16 @@ function renderLeadFinder(opportunities = state.websiteOpportunities) {
   });
   const ready = Boolean(state.aiConfig?.enabled && state.aiConfig?.hasApiKey && state.aiConfig?.useLeadFinder);
   const sortedAll = [...opportunities].sort((a, b) => {
-    // 本轮搜客/勾选的新结果置顶，避免被历史高分种子埋没
+    // 本轮勾选结果置顶，其余候选按采购意向与资料质量排列。
     const aSel = a.selected ? 1 : 0;
     const bSel = b.selected ? 1 : 0;
     if (aSel !== bSel) return bSel - aSel;
     if (a.status !== b.status) return a.status === "synced" ? 1 : -1;
+    const scoreDiff = prospectPurchaseIntentScore(b) - prospectPurchaseIntentScore(a);
+    if (scoreDiff) return scoreDiff;
     const createdDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     if (Number.isFinite(createdDiff) && createdDiff !== 0) return createdDiff;
-    return leadFinderScore(b) - leadFinderScore(a);
+    return a.id.localeCompare(b.id);
   });
   const sorted = leadFinderFilteredRows(sortedAll);
   const pageCount = Math.max(1, Math.ceil(sorted.length / leadFinderPageSize));
@@ -30153,7 +30378,7 @@ async function launchProspectRunFromLeadFinder(
 async function runLeadFinder(button?: HTMLButtonElement) {
   const originalText = button?.textContent || "生成并运行任务";
   const input = qs<HTMLTextAreaElement>("#leadFinderUrlInput");
-  const urls = (input?.value || "").split(/\n|,|，/).map((item) => item.trim()).filter(Boolean).slice(0, Number(qs<HTMLSelectElement>("#leadLimit")?.value || 20));
+  const urls = (input?.value || "").split(/\n|,|，/).map((item) => item.trim()).filter(Boolean).slice(0, Number(qs<HTMLSelectElement>("#leadLimit")?.value || 10));
   const aiReady = Boolean(state.aiConfig?.enabled && state.aiConfig?.hasApiKey && state.aiConfig?.useLeadFinder);
   renderLeadFinderSearchLinks();
   // AI 模型为必选项：未配置不允许启动搜客，避免用户使用未授权/免费模型反复搜索
@@ -30228,7 +30453,7 @@ async function runLeadFinder(button?: HTMLButtonElement) {
       return;
     }
   }
-  const limit = Number(qs<HTMLSelectElement>("#leadLimit")?.value || 12);
+  const limit = Number(qs<HTMLSelectElement>("#leadLimit")?.value || 10);
   const scheduleEnabled = leadFinderMode === "standard" && Boolean(qs<HTMLInputElement>("#leadFinderScheduleInput")?.checked);
 
   // 计费源成本护栏：付费 API 与 AI 搜索都会产生费用，搜索前确认
@@ -30308,7 +30533,8 @@ async function runLeadFinder(button?: HTMLButtonElement) {
       }
       leadFinderJobs = [backendJob, ...leadFinderJobs.filter((item) => item.backendRunId !== backendJob.backendRunId)]
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .slice(0, 6);
+        .slice(0, 20);
+      selectedLeadFinderResultJobId = backendJob.id;
       renderLeadFinder(state.websiteOpportunities);
       if (result.schedule) {
         state.prospectSchedules = [
@@ -32422,6 +32648,8 @@ function installEvents() {
     toast("已退出登录");
   });
   qs<HTMLButtonElement>("#profileEntryButton")?.addEventListener("click", () => activateNavView("profile", () => renderProfile()));
+  qs<HTMLButtonElement>("#profileExportDataButton")?.addEventListener("click", (event) => void exportLocalBusinessData(event.currentTarget as HTMLButtonElement));
+  qs<HTMLButtonElement>("#profileExportDataInlineButton")?.addEventListener("click", (event) => void exportLocalBusinessData(event.currentTarget as HTMLButtonElement));
   qs<HTMLButtonElement>("#profileSaveButton")?.addEventListener("click", (event) => void saveProfileEmailBinding(event.currentTarget as HTMLButtonElement));
   qs<HTMLButtonElement>("#profileClearImapButton")?.addEventListener("click", (event) => void clearProfileImapPassword(event.currentTarget as HTMLButtonElement));
   qs<HTMLButtonElement>("#profileTestImapButton")?.addEventListener("click", (event) => void testProfileImap(event.currentTarget as HTMLButtonElement));
@@ -33232,7 +33460,7 @@ function installEvents() {
   qsa<HTMLElement>("#toolCards .tool-card").forEach((card) => {
     card.addEventListener("click", () => {
       const target = card.dataset.toolView || "dashboard";
-      if (target === "ai-research") activateNavView("ai-research", renderBackgroundResearch);
+      if (target === "ai-research") openBackgroundResearchPicker();
       else activateNavView(target);
     });
   });
@@ -35070,11 +35298,6 @@ function resolveTopbarSearchView(rawValue: string) {
     ["prospect", "prospect-list"],
     ["ai agent", "ai-agent"],
     ["智能体", "ai-agent"],
-    ["集成中心", "integration-center"],
-    ["集成", "integration-center"],
-    ["连接器", "integration-center"],
-    ["mcp", "integration-center"],
-    ["integration", "integration-center"],
     ["ai", "ai-config"],
     ["gpt", "ai-config"],
     ["模型", "ai-config"],
@@ -35114,23 +35337,12 @@ function resolveTopbarSearchView(rawValue: string) {
     ["ci", "documents"],
     ["invoice", "documents"],
     ["document", "documents"],
-    ["提成", "commission"],
-    ["对账", "commission"],
-    ["commission", "commission"],
     ["报表", "reports"],
     ["report", "reports"],
-    ["企业微信", "wecom"],
-    ["微信", "wecom"],
-    ["日报", "daily-reports"],
-    ["daily report", "daily-reports"],
     ["通知", "inbox"],
     ["消息", "inbox"],
     ["notification", "inbox"],
     ["inbox", "inbox"],
-    ["资料", "knowledge"],
-    ["knowledge", "knowledge"],
-    ["考试", "exam"],
-    ["exam", "exam"],
     ["工具", "tools"],
     ["ocr", "tools"],
     ["竞争", "competitors"],

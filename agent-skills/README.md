@@ -1,4 +1,4 @@
-# GoodJob CRM Agent Skills
+# 海拓 CRM Agent Skills
 
 每个 Skill 使用独立目录保存：
 
