@@ -3580,6 +3580,7 @@ export interface AiModelConfig {
   id: string;
   provider: string;
   protocol: "openai-compatible" | "anthropic" | "gemini";
+  scope?: "personal" | "tenant_pool";
   name: string;
   baseUrl: string;
   model: string;
@@ -3594,6 +3595,12 @@ export interface AiModelConfig {
   lastTestAt?: string;
   lastTestStatus?: "untested" | "passed" | "failed";
   lastTestMessage?: string;
+  upstreamLimitCny?: number;
+  retailCreditCny?: number;
+  upstreamUsageRatio?: number;
+  lastUsageSyncAt?: string;
+  lastUsageStatus?: "untested" | "passed" | "failed";
+  lastUsageMessage?: string;
   ownerId: string;
   teamId: string;
   updatedAt: string;

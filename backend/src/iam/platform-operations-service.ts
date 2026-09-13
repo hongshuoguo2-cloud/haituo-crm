@@ -29,6 +29,7 @@ export interface PlatformOperationsService {
   readSupportResource(actor: SessionUser, sessionId: string, resource: "customers" | "leads" | "deals" | "daily-reports", context?: AuditContext): Promise<Record<string, unknown>>;
   getHealth(actor: SessionUser): Promise<Record<string, unknown>>;
   listAudit(actor: SessionUser, limit?: number): Promise<Record<string, unknown>>;
+  authorizeAiPoolManage(actor: SessionUser): Promise<void>;
 }
 
 function id(prefix: string) {
@@ -151,6 +152,10 @@ function supportPermissionForResource(resource: string) {
 
 export function createPlatformOperationsService(pool: mysql.Pool): PlatformOperationsService {
   return {
+    async authorizeAiPoolManage(actor) {
+      await requirePlatformPermission(pool, actor, "platform.tenant.plan.manage");
+    },
+
     async getOverview(actor) {
       await requirePlatformPermission(pool, actor, "platform.dashboard.read");
       const [[tenantResult], [memberResult], [supportResult], [auditResult]] = await Promise.all([

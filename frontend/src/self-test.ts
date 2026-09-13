@@ -358,8 +358,13 @@ assert.match(prototype, /\.agent-chat-bubble,[\s\S]*\.agent-chat-answer > p[\s\S
 assert.match(apiLayer, /copyableText \|\| window\.getSelection\(\)\?\.toString\(\)\.trim\(\)/, "选择 Agent 对话文字时不得触发整轮重新渲染");
 assert.match(apiLayer, /agentPendingProgress\.push\(progress\)/, "Agent 规划流必须保留同阶段的细粒度动作，不能互相覆盖");
 assert.match(apiLayer, /权限校验未通过：[\s\S]*接口参数或契约校验失败：[\s\S]*网络或上游服务调用失败：/, "Agent 失败链必须给出可读诊断");
-assert.equal(productConfig.productName, "海拓 CRM");
-assert.match(productConfig.version || "", /^\d+\.\d+(?:\.\d+)?$/);
+assert.equal(productConfig.productName, "海拓 · 外贸客户工作台");
+assert.match(productConfig.version || "", /^\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?$/);
+assert.match(prototype, /data-platform-tab="ai-pool"/, "平台运维必须提供公司模型池入口");
+assert.match(prototype, /id="apiBalanceAvailable"/, "用户工作台必须展示 API 销售余额");
+assert.match(apiLayer, /\/api\/platform\/v1\/ai-pool/, "平台运维必须通过模型池接口发放额度");
+assert.match(apiLayer, /\/api\/ai-balance/, "用户工作台必须从服务端同步 API 销售余额");
+assert.equal(prototype.includes("计费服务尚未接入"), false, "API 余额页面不能继续显示占位文案");
 
 assert.equal(isLeadSourceExecutable({ id: "ready", ready: true, enabled: true, accessMode: "api" }), true);
 assert.equal(isLeadSourceExecutable({ id: "disabled", ready: true, enabled: false, accessMode: "api" }), false);

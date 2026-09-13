@@ -23270,6 +23270,9 @@ body.platform-mode .workspace-tabs { display:none !important; }
  .haituo-balance-status{display:inline-block;padding:6px 12px;border-radius:20px;background:#e4f4f1;color:#087d82;font-size:13px}
  .haituo-balance-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
  .haituo-balance-grid .haituo-balance-panel{margin-top:0}.haituo-balance-panel .btn:disabled{opacity:.55;cursor:not-allowed}
+ .haituo-balance-progress{height:10px;max-width:680px;margin:18px 0 22px;overflow:hidden;border-radius:999px;background:#e8eef0}
+ .haituo-balance-progress i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#0f8f91,#22b49c);transition:width .25s ease}
+ .haituo-balance-status.is-stale{background:#fff1d4;color:#885e00}.haituo-balance-status.is-error{background:#f8e6e8;color:#9a3445}
  #haituoAccountInfo{width:100%;line-height:1.8;min-height:170px}
 </style></head>
 <body>
@@ -26949,12 +26952,13 @@ body.platform-mode .workspace-tabs { display:none !important; }
         <div class="view" id="api-balance">
           <div class="page-head"><div><h1>API 余额</h1><p>海拓模型服务的余额与用量</p></div></div>
           <section class="haituo-balance-panel">
-            <span class="haituo-balance-status">计费服务尚未接入</span>
-            <p>可用余额</p><strong aria-label="余额暂不可用">—</strong>
-            <p>接入后可在这里查看余额、充值记录和模型调用用量。</p>
-            <button class="btn primary" type="button" disabled>充值（待接入）</button>
+            <span class="haituo-balance-status" id="apiBalanceStatus">正在同步</span>
+            <p>可用余额</p><strong id="apiBalanceAvailable" aria-label="正在查询余额">—</strong>
+            <p id="apiBalanceMessage">正在读取海拓模型服务额度。</p>
+            <div class="haituo-balance-progress"><i id="apiBalanceProgress"></i></div>
+            <button class="btn primary" type="button" id="apiBalanceRefresh">刷新余额</button>
           </section>
-          <div class="haituo-balance-grid"><section class="haituo-balance-panel"><h2>用量记录</h2><p>暂无可展示的计费用量。</p></section><section class="haituo-balance-panel"><h2>充值记录</h2><p>充值服务接入后显示。</p></section></div>
+          <div class="haituo-balance-grid"><section class="haituo-balance-panel"><h2>额度用量</h2><p id="apiBalanceUsage">正在查询。</p></section><section class="haituo-balance-panel"><h2>模型服务</h2><p id="apiBalanceModel">正在查询。</p></section></div>
         </div>
 
         <div class="view" id="profile">
@@ -27119,6 +27123,7 @@ body.platform-mode .workspace-tabs { display:none !important; }
                 <nav class="platform-tabs" id="platformTabs" aria-label="平台运维模块">
                   <button type="button" class="active" data-platform-tab="overview">平台概览</button>
                   <button type="button" data-platform-tab="tenants">公司管理</button>
+                  <button type="button" data-platform-tab="ai-pool">模型池</button>
                   <button type="button" data-platform-tab="support">支持访问</button>
                   <button type="button" data-platform-tab="operators">平台人员</button>
                   <button type="button" data-platform-tab="health">服务健康</button>

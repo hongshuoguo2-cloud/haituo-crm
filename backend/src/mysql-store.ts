@@ -3220,6 +3220,7 @@ async function ensureSchema(pool: mysql.Pool) {
     id VARCHAR(64) PRIMARY KEY,
     provider VARCHAR(40) NOT NULL DEFAULT 'openai',
     protocol VARCHAR(40) NOT NULL DEFAULT 'openai-compatible',
+    config_scope VARCHAR(20) NOT NULL DEFAULT 'personal',
     name VARCHAR(120) NOT NULL,
     base_url VARCHAR(255) NOT NULL,
     model VARCHAR(120) NOT NULL,
@@ -3234,12 +3235,19 @@ async function ensureSchema(pool: mysql.Pool) {
     last_test_at DATETIME NULL,
     last_test_status VARCHAR(20) DEFAULT 'untested',
     last_test_message VARCHAR(255) DEFAULT '',
+    upstream_limit_cny DECIMAL(14,2) NOT NULL DEFAULT 0,
+    retail_credit_cny DECIMAL(14,2) NOT NULL DEFAULT 0,
+    upstream_usage_ratio DECIMAL(12,8) NOT NULL DEFAULT 0,
+    last_usage_sync_at DATETIME NULL,
+    last_usage_status VARCHAR(20) DEFAULT 'untested',
+    last_usage_message VARCHAR(255) DEFAULT '',
     owner_id VARCHAR(64) NOT NULL,
     team_id VARCHAR(64) NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_ai_model_owner(owner_id)
   )`);
   await ensureColumn(pool, "ai_model_configs", "protocol", "VARCHAR(40) NOT NULL DEFAULT 'openai-compatible'");
+  await ensureColumn(pool, "ai_model_configs", "config_scope", "VARCHAR(20) NOT NULL DEFAULT 'personal'");
   await ensureColumn(pool, "ai_model_configs", "temperature", "DECIMAL(4,2) DEFAULT 0.10");
   await ensureColumn(pool, "ai_model_configs", "use_lead_finder", "BOOLEAN DEFAULT TRUE");
   await ensureColumn(pool, "ai_model_configs", "use_website_parse", "BOOLEAN DEFAULT TRUE");
@@ -3249,6 +3257,12 @@ async function ensureSchema(pool: mysql.Pool) {
   await ensureColumn(pool, "ai_model_configs", "last_test_at", "DATETIME NULL");
   await ensureColumn(pool, "ai_model_configs", "last_test_status", "VARCHAR(20) DEFAULT 'untested'");
   await ensureColumn(pool, "ai_model_configs", "last_test_message", "VARCHAR(255) DEFAULT ''");
+  await ensureColumn(pool, "ai_model_configs", "upstream_limit_cny", "DECIMAL(14,2) NOT NULL DEFAULT 0");
+  await ensureColumn(pool, "ai_model_configs", "retail_credit_cny", "DECIMAL(14,2) NOT NULL DEFAULT 0");
+  await ensureColumn(pool, "ai_model_configs", "upstream_usage_ratio", "DECIMAL(12,8) NOT NULL DEFAULT 0");
+  await ensureColumn(pool, "ai_model_configs", "last_usage_sync_at", "DATETIME NULL");
+  await ensureColumn(pool, "ai_model_configs", "last_usage_status", "VARCHAR(20) DEFAULT 'untested'");
+  await ensureColumn(pool, "ai_model_configs", "last_usage_message", "VARCHAR(255) DEFAULT ''");
   await pool.query(`CREATE TABLE IF NOT EXISTS products (
     id VARCHAR(64) PRIMARY KEY,
     name_zh VARCHAR(200) NOT NULL DEFAULT '',
@@ -7126,6 +7140,7 @@ async function loadAiModelConfigs(
       id: row.id,
       provider,
       protocol: row.protocol || (provider === "anthropic" ? "anthropic" : provider === "gemini" ? "gemini" : "openai-compatible"),
+      scope: row.config_scope === "tenant_pool" ? "tenant_pool" : "personal",
       name: row.name,
       baseUrl: row.base_url,
       model: row.model,
@@ -7140,6 +7155,12 @@ async function loadAiModelConfigs(
       lastTestAt: row.last_test_at instanceof Date ? row.last_test_at.toISOString() : row.last_test_at || undefined,
       lastTestStatus: row.last_test_status || "untested",
       lastTestMessage: row.last_test_message || "",
+      upstreamLimitCny: Number(row.upstream_limit_cny || 0),
+      retailCreditCny: Number(row.retail_credit_cny || 0),
+      upstreamUsageRatio: Number(row.upstream_usage_ratio || 0),
+      lastUsageSyncAt: row.last_usage_sync_at instanceof Date ? row.last_usage_sync_at.toISOString() : row.last_usage_sync_at || undefined,
+      lastUsageStatus: row.last_usage_status || "untested",
+      lastUsageMessage: row.last_usage_message || "",
       ownerId: row.owner_id,
       teamId: row.team_id,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
@@ -11420,7 +11441,7 @@ async function persistAll(pool: mysql.Pool, store: CrmStore) {
 	    await replaceRows(connection, "deal_recommendations", store.dealRecommendations, (item) => [item.id, item.signalId, item.teamId, item.ownerId, item.prospectCandidateId, item.tenantProspectId || "", item.organizationId || "", item.leadId || "", item.customerId || "", item.suggestedTitle, item.suggestedProduct, item.suggestedQuantity || 0, item.suggestedUnitPrice || 0, item.suggestedAmount || 0, item.currency || "USD", item.initialStage || "询盘", item.nextAction || "", item.nextActionAt || "", item.expectedCloseAt || "", JSON.stringify(item.reasonCodes || []), JSON.stringify(item.missingFields || []), JSON.stringify(item.evidenceRefs || []), item.recommendationScore || 0, JSON.stringify(item.duplicateDealIds || []), item.status, item.reviewedBy || "", item.reviewedAt ? mysqlDate(item.reviewedAt) : null, item.reviewReason || "", item.linkedDealId || "", mysqlDate(item.expiresAt), mysqlDate(item.createdAt), mysqlDate(item.updatedAt)], "(id,signal_id,team_id,owner_id,prospect_candidate_id,tenant_prospect_id,organization_id,lead_id,customer_id,suggested_title,suggested_product,suggested_quantity,suggested_unit_price,suggested_amount,currency,initial_stage,next_action,next_action_at,expected_close_at,reason_codes_json,missing_fields_json,evidence_refs_json,recommendation_score,duplicate_deal_ids_json,recommendation_status,reviewed_by,reviewed_at,review_reason,linked_deal_id,expires_at,created_at,updated_at)");
       await replaceRows(connection, "acquisition_outcome_feedback", store.acquisitionOutcomeFeedback, (item) => [item.id, item.teamId, item.ownerId, item.dealId, item.customerId, item.leadId || "", item.prospectCandidateId || "", item.tenantProspectId || "", item.organizationId || "", item.campaignId || "", item.campaignVersion || 0, item.strategyId || "", item.runId || "", JSON.stringify(item.providerCodes || []), item.icpAssessmentId || "", item.icpPolicyId || "", item.outcome, item.amount || 0, item.currency || "USD", item.reasonCategory || "", item.reason || "", mysqlDate(item.closedAt), item.attributionConfidence || 0, JSON.stringify(item.attributionReasonCodes || []), item.payloadHash, mysqlDate(item.createdAt)], "(id,team_id,owner_id,deal_id,customer_id,lead_id,prospect_candidate_id,tenant_prospect_id,organization_id,campaign_id,campaign_version,strategy_id,run_id,provider_codes_json,icp_assessment_id,icp_policy_id,outcome,amount,currency,reason_category,reason_text,closed_at,attribution_confidence,attribution_reason_codes_json,payload_hash,created_at)");
       await replaceRows(connection, "prospect_strategy_suggestions", store.prospectStrategySuggestions, (item) => [item.id, item.teamId, item.ownerId, item.campaignId, item.campaignVersion || 0, item.strategyId, item.suggestionType, JSON.stringify(item.sampleMetrics || {}), JSON.stringify(item.proposedAdjustments || {}), item.rationale || "", JSON.stringify(item.reasonCodes || []), item.sampleFrom ? mysqlDate(item.sampleFrom) : null, item.sampleTo ? mysqlDate(item.sampleTo) : null, item.payloadHash, item.status, item.reviewedBy || "", item.reviewedAt ? mysqlDate(item.reviewedAt) : null, item.reviewNote || "", mysqlDate(item.createdAt), mysqlDate(item.updatedAt)], "(id,team_id,owner_id,campaign_id,campaign_version,strategy_id,suggestion_type,sample_metrics_json,proposed_adjustments_json,rationale,reason_codes_json,sample_from,sample_to,payload_hash,suggestion_status,reviewed_by,reviewed_at,review_note,created_at,updated_at)");
-	    await replaceRows(connection, "ai_model_configs", store.aiModelConfigs, (item) => [item.id, item.provider, item.protocol || "openai-compatible", item.name, item.baseUrl, item.model, encryptAiModelApiKey(item, item.apiKey), item.enabled, item.temperature ?? 0.1, item.useLeadFinder ?? true, item.useWebsiteParse ?? true, item.useScoring ?? true, item.useEmailDraft ?? true, item.useExam ?? false, item.lastTestAt ? mysqlDate(item.lastTestAt) : null, item.lastTestStatus || "untested", item.lastTestMessage || "", item.ownerId, item.teamId, mysqlDate(item.updatedAt)], "(id,provider,protocol,name,base_url,model,api_key,enabled,temperature,use_lead_finder,use_website_parse,use_scoring,use_email_draft,use_exam,last_test_at,last_test_status,last_test_message,owner_id,team_id,updated_at)");
+	    await replaceRows(connection, "ai_model_configs", store.aiModelConfigs, (item) => [item.id, item.provider, item.protocol || "openai-compatible", item.scope || "personal", item.name, item.baseUrl, item.model, encryptAiModelApiKey(item, item.apiKey), item.enabled, item.temperature ?? 0.1, item.useLeadFinder ?? true, item.useWebsiteParse ?? true, item.useScoring ?? true, item.useEmailDraft ?? true, item.useExam ?? false, item.lastTestAt ? mysqlDate(item.lastTestAt) : null, item.lastTestStatus || "untested", item.lastTestMessage || "", item.upstreamLimitCny || 0, item.retailCreditCny || 0, item.upstreamUsageRatio || 0, item.lastUsageSyncAt ? mysqlDate(item.lastUsageSyncAt) : null, item.lastUsageStatus || "untested", item.lastUsageMessage || "", item.ownerId, item.teamId, mysqlDate(item.updatedAt)], "(id,provider,protocol,config_scope,name,base_url,model,api_key,enabled,temperature,use_lead_finder,use_website_parse,use_scoring,use_email_draft,use_exam,last_test_at,last_test_status,last_test_message,upstream_limit_cny,retail_credit_cny,upstream_usage_ratio,last_usage_sync_at,last_usage_status,last_usage_message,owner_id,team_id,updated_at)");
 	    await replaceRows(connection, "products", store.products, (item) => [item.id, item.nameZh, item.nameEn, item.model, item.category, item.unit, item.price, item.currency, item.hsCode, item.descriptionZh, item.descriptionEn, JSON.stringify(item.tags || []), item.imageUrl, item.ownerId, item.teamId, mysqlDate(item.updatedAt)], "(id,name_zh,name_en,model,category,unit,price,currency,hs_code,description_zh,description_en,tags,image_url,owner_id,team_id,updated_at)");
     await replaceRows(connection, "shipments", store.shipments, (item) => [item.id, item.shipmentNo, item.dealId, item.dealTitle, item.customerName, item.destinationCountry || "", item.destinationPort || "", item.destinationAddress || "", item.courier, item.trackingCode, item.trackingImageUrl, item.status, item.statusSource || "local", item.lastSyncedAt || "", item.syncError || "", JSON.stringify(item.trackingEvents || []), item.shippedAt, item.estimatedArrival, item.note, JSON.stringify(item.items || []), item.ownerId, item.teamId, mysqlDate(item.updatedAt)], "(id,shipment_no,deal_id,deal_title,customer_name,destination_country,destination_port,destination_address,courier,tracking_code,tracking_image_url,status,status_source,last_synced_at,sync_error,tracking_events,shipped_at,estimated_arrival,note,items,owner_id,team_id,updated_at)");
 	    await replaceRows(connection, "provider_catalog", store.providerCatalog, (item) => [item.id, item.code, item.name, item.category, item.sourceLevel, item.accessMode, item.baseUrl || "", item.officialDocsUrl || "", JSON.stringify(item.capabilities), JSON.stringify(item.allowedFields), JSON.stringify(item.licensePolicy), JSON.stringify(item.defaultRatePolicy), JSON.stringify(item.retentionPolicy), item.status, item.version, item.reviewedAt ? mysqlDate(item.reviewedAt) : null, mysqlDate(item.createdAt), mysqlDate(item.updatedAt)], "(id,code,name,category,source_level,access_mode,base_url,official_docs_url,capability_json,allowed_fields_json,license_policy_json,default_rate_policy_json,retention_policy_json,status,version,reviewed_at,created_at,updated_at)");

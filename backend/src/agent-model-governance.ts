@@ -27,8 +27,10 @@ function routeValue(purpose: AgentModelCallPurpose) {
 
 export function agentModelCandidates(store: CrmStore, actor: AgentActor, purpose: AgentModelCallPurpose, preferred?: AiModelConfig) {
   const enabled = store.aiModelConfigs
-    .filter((item) => item.ownerId === actor.id && item.teamId === actor.teamId && item.enabled && item.apiKey)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    .filter((item) => item.teamId === actor.teamId && item.enabled && item.apiKey
+      && ((item.scope || "personal") === "tenant_pool" || item.ownerId === actor.id))
+    .sort((left, right) => Number((right.scope || "personal") === "personal") - Number((left.scope || "personal") === "personal")
+      || right.updatedAt.localeCompare(left.updatedAt));
   const route = (routeValue(purpose) || "").trim();
   const routed = route ? enabled.find((item) => item.id === route || item.model === route) : undefined;
   const ordered = [routed, preferred, ...enabled].filter((item): item is AiModelConfig => Boolean(item));

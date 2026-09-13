@@ -314,8 +314,10 @@ function visibleLeads(store: CrmStore, user: AgentActor) {
 
 function selectedModel(store: CrmStore, user: AgentActor): AiModelConfig | undefined {
   return store.aiModelConfigs
-    .filter((item) => item.ownerId === user.id && item.teamId === user.teamId && item.enabled && item.apiKey)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    .filter((item) => item.teamId === user.teamId && item.enabled && item.apiKey
+      && ((item.scope || "personal") === "tenant_pool" || item.ownerId === user.id))
+    .sort((left, right) => Number((right.scope || "personal") === "personal") - Number((left.scope || "personal") === "personal")
+      || right.updatedAt.localeCompare(left.updatedAt))[0];
 }
 
 export function agentMissionContextSnapshots(runs: AgentRun[], limit = 4): AgentMissionContextSnapshot[] {

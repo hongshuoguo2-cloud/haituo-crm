@@ -28,6 +28,14 @@ import {
   callAiModelWithWebSearch,
   extractJsonObject
 } from "./ai-model-runtime.js";
+import {
+  applyZhongkeyUsage,
+  fetchZhongkeyModels,
+  fetchZhongkeyTokenUsage,
+  publicRetailBalance,
+  ZHONGKEY_BASE_URL,
+  ZHONGKEY_GUIDE_URL
+} from "./zhongkey-ai-pool.js";
 import { createAiSearchProvider } from "./ai-search-provider.js";
 import { compileAgentGoalSpec } from "./agent-goal.js";
 import { resolveAgentMissionRoute } from "./agent-turn-decision.js";
@@ -3973,6 +3981,199 @@ app.get("/api/platform/v1/audit", requireAuth, asyncRoute(async (req, res) => {
   const service = platformServiceOrFail(res); if (!service) return;
   const limit = z.coerce.number().int().min(1).max(500).default(100).parse(req.query.limit);
   await sendPlatformAction(res, () => service.listAudit(req.user!, limit), "平台审计读取失败");
+}));
+
+function tenantAiPoolConfig(tenantId: string) {
+  return getStore().aiModelConfigs
+    .filter((item) => item.scope === "tenant_pool" && item.teamId === tenantId)
+    .sort((left, right) => Number(right.enabled) - Number(left.enabled) || right.updatedAt.localeCompare(left.updatedAt))[0] || null;
+}
+
+function publicPlatformAiPoolConfig(config: AiModelConfig, tenantName = "") {
+  return {
+    id: config.id,
+    tenantId: config.teamId,
+    tenantName,
+    provider: config.provider,
+    providerName: "中科云",
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: config.apiKey ? `****${config.apiKey.slice(-4)}` : "",
+    hasApiKey: Boolean(config.apiKey),
+    enabled: config.enabled,
+    upstreamLimitCny: Number(config.upstreamLimitCny || 0),
+    retailCreditCny: Number(config.retailCreditCny || 0),
+    balance: publicRetailBalance(config),
+    lastTestAt: config.lastTestAt || "",
+    lastTestStatus: config.lastTestStatus || "untested",
+    lastTestMessage: config.lastTestMessage || "",
+    lastUsageSyncAt: config.lastUsageSyncAt || "",
+    lastUsageStatus: config.lastUsageStatus || "untested",
+    lastUsageMessage: config.lastUsageMessage || "",
+    updatedAt: config.updatedAt
+  };
+}
+
+async function requireAiPoolManager(req: Request, res: Response) {
+  const service = platformServiceOrFail(res);
+  if (!service) return null;
+  try {
+    await service.authorizeAiPoolManage(req.user!);
+    return service;
+  } catch (error) {
+    const status = typeof error === "object" && error && "status" in error ? Number(error.status) : 403;
+    res.status(status).json({ message: error instanceof Error ? error.message : "当前账号没有模型池管理权限" });
+    return null;
+  }
+}
+
+app.get("/api/platform/v1/ai-pool/catalog", requireAuth, asyncRoute(async (req, res) => {
+  if (!await requireAiPoolManager(req, res)) return;
+  const models = await fetchZhongkeyModels();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ provider: "zhongkey", providerName: "中科云", baseUrl: ZHONGKEY_BASE_URL, guideUrl: ZHONGKEY_GUIDE_URL, models });
+}));
+
+app.get("/api/platform/v1/ai-pool", requireAuth, asyncRoute(async (req, res) => {
+  const service = await requireAiPoolManager(req, res); if (!service) return;
+  const tenantResult = await service.listTenants(req.user!) as { tenants?: Array<{ id: string; name: string }> };
+  const names = new Map((tenantResult.tenants || []).map((tenant) => [tenant.id, tenant.name]));
+  const configs = getStore().aiModelConfigs
+    .filter((item) => item.scope === "tenant_pool")
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .map((config) => publicPlatformAiPoolConfig(config, names.get(config.teamId) || config.teamId));
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ configs });
+}));
+
+app.post("/api/platform/v1/ai-pool", requireAuth, asyncRoute(async (req, res) => {
+  if (!await requireAiPoolManager(req, res)) return;
+  const body = z.object({
+    tenantId: z.string().trim().min(1).max(64),
+    model: z.string().trim().min(1).max(160),
+    apiKey: z.string().trim().max(500).optional().default(""),
+    upstreamLimitCny: z.number().min(0.01).max(10_000_000),
+    retailCreditCny: z.number().min(0.01).max(100_000_000)
+  }).parse(req.body || {});
+  const store = getStore();
+  const existing = tenantAiPoolConfig(body.tenantId);
+  const apiKey = body.apiKey && !body.apiKey.includes("****") ? body.apiKey : existing?.apiKey || "";
+  if (!apiKey) {
+    res.status(400).json({ message: "请填写中科云 API Key" });
+    return;
+  }
+  const tenantResult = await getStore().platformOperations!.listTenants(req.user!) as { tenants?: Array<{ id: string; name: string; status: string }> };
+  const tenant = (tenantResult.tenants || []).find((item) => item.id === body.tenantId && ["trial", "active"].includes(item.status));
+  if (!tenant) {
+    res.status(404).json({ message: "公司不存在或当前不可发放模型额度" });
+    return;
+  }
+  const usage = await fetchZhongkeyTokenUsage(apiKey);
+  if (usage.unlimitedQuota) {
+    res.status(400).json({ message: "请先在中科云关闭无限额度，并给这把 Key 设置独立上限，才能按客户销售额度同步扣减" });
+    return;
+  }
+  if (usage.modelLimitsEnabled && usage.modelLimits.length && !usage.modelLimits.includes(body.model)) {
+    res.status(400).json({ message: `这把 Key 没有 ${body.model} 的使用权限，请在中科云调整模型限制` });
+    return;
+  }
+  const now = new Date().toISOString();
+  const config: AiModelConfig = {
+    id: existing?.id || `aipool_${randomUUID().replaceAll("-", "").slice(0, 40)}`,
+    provider: "zhongkey",
+    protocol: "openai-compatible",
+    scope: "tenant_pool",
+    name: `中科云 · ${body.model}`,
+    baseUrl: ZHONGKEY_BASE_URL,
+    model: body.model,
+    apiKey,
+    enabled: true,
+    temperature: 0.1,
+    useLeadFinder: true,
+    useWebsiteParse: true,
+    useScoring: true,
+    useEmailDraft: true,
+    useExam: true,
+    lastTestAt: now,
+    lastTestStatus: "untested",
+    lastTestMessage: "正在验证模型调用",
+    upstreamLimitCny: body.upstreamLimitCny,
+    retailCreditCny: body.retailCreditCny,
+    upstreamUsageRatio: existing?.apiKey === apiKey ? existing.upstreamUsageRatio || 0 : 0,
+    lastUsageSyncAt: "",
+    lastUsageStatus: "untested",
+    lastUsageMessage: "",
+    ownerId: req.user!.id,
+    teamId: body.tenantId,
+    updatedAt: now
+  };
+  applyZhongkeyUsage(config, usage, now);
+  const tested = await testAiConfig(config);
+  config.lastTestAt = now;
+  config.lastTestStatus = tested.ok ? "passed" : "failed";
+  config.lastTestMessage = tested.message;
+  if (!tested.ok) {
+    res.status(400).json({ message: `${tested.message}；Key 尚未保存，请检查模型名称或中科云分组` });
+    return;
+  }
+  if (existing) Object.assign(existing, config);
+  else store.aiModelConfigs.unshift(config);
+  await store.persist();
+  res.status(201).json({ config: publicPlatformAiPoolConfig(config, tenant.name) });
+}));
+
+app.post("/api/platform/v1/ai-pool/:tenantId/sync", requireAuth, asyncRoute(async (req, res) => {
+  if (!await requireAiPoolManager(req, res)) return;
+  const config = tenantAiPoolConfig(req.params.tenantId);
+  if (!config?.apiKey) {
+    res.status(404).json({ message: "该公司尚未配置模型池 Key" });
+    return;
+  }
+  try {
+    applyZhongkeyUsage(config, await fetchZhongkeyTokenUsage(config.apiKey));
+  } catch (error) {
+    config.lastUsageSyncAt = new Date().toISOString();
+    config.lastUsageStatus = "failed";
+    config.lastUsageMessage = error instanceof Error ? error.message.slice(0, 220) : "中科云额度同步失败";
+    await getStore().persist();
+    throw error;
+  }
+  config.updatedAt = new Date().toISOString();
+  await getStore().persist();
+  res.json({ config: publicPlatformAiPoolConfig(config) });
+}));
+
+app.get("/api/ai-balance", requireAuth, asyncRoute(async (req, res) => {
+  if (isPlatformIdentity(req.user!)) {
+    res.status(403).json({ message: "平台运维账号请在模型池中查看公司额度" });
+    return;
+  }
+  const config = tenantAiPoolConfig(req.user!.teamId);
+  if (!config || !config.enabled || !config.apiKey) {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ configured: false, status: "unavailable", message: "公司尚未开通海拓模型额度" });
+    return;
+  }
+  const lastSync = config.lastUsageSyncAt ? new Date(config.lastUsageSyncAt).getTime() : 0;
+  if (!lastSync || Date.now() - lastSync >= 60_000) {
+    try {
+      applyZhongkeyUsage(config, await fetchZhongkeyTokenUsage(config.apiKey));
+    } catch (error) {
+      config.lastUsageSyncAt = new Date().toISOString();
+      config.lastUsageStatus = "failed";
+      config.lastUsageMessage = error instanceof Error ? error.message.slice(0, 220) : "额度同步失败";
+    }
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    configured: true,
+    status: config.lastUsageStatus === "failed" ? "stale" : "ready",
+    providerName: "海拓模型服务",
+    model: config.model,
+    balance: publicRetailBalance(config),
+    lastSyncedAt: config.lastUsageSyncAt || "",
+    message: config.lastUsageStatus === "failed" ? "余额同步暂时延迟，当前显示最近一次数据" : "余额已与模型服务同步"
+  });
 }));
 
 app.get("/api/iam/capabilities", requireAuth, asyncRoute(async (req, res) => {
@@ -14594,8 +14795,13 @@ app.post("/api/agent/execute", requireAuth, async (req, res, next) => {
 
 app.get("/api/tools/ai-config", requireAuth, (req, res) => {
   const configs = getAiConfigs(req.user!);
-  const config = getAiConfig(req.user!);
-  res.json({ config: config ? publicAiConfig(config) : null, configs: configs.map(publicAiConfig) });
+  const config = configs.find((item) => item.enabled && item.apiKey) || configs[0] || null;
+  const shared = tenantAiPoolConfig(req.user!.teamId);
+  res.json({
+    config: config ? publicAiConfig(config) : null,
+    configs: configs.map(publicAiConfig),
+    sharedPool: shared?.enabled ? { enabled: true, provider: "中科云", model: shared.model } : null
+  });
 });
 
 app.post("/api/tools/ai-config", requireAuth, asyncRoute(async (req, res) => {
@@ -14634,6 +14840,7 @@ app.post("/api/tools/ai-config", requireAuth, asyncRoute(async (req, res) => {
     id: existing?.id || body.id || `ai_${req.user!.id}_${Date.now()}`,
     provider: body.provider,
     protocol: body.protocol,
+    scope: "personal",
     name: body.name,
     baseUrl,
     model: body.model,
@@ -18988,7 +19195,7 @@ type AiUseCase = "leadFinder" | "websiteParse" | "scoring" | "emailDraft" | "exa
 
 function getAiConfigs(user: SessionUser) {
   return getStore().aiModelConfigs
-    .filter((item) => item.ownerId === user.id)
+    .filter((item) => (item.scope || "personal") === "personal" && item.ownerId === user.id)
     .sort((left, right) => Number(right.enabled) - Number(left.enabled) || new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
 }
 
@@ -19006,9 +19213,15 @@ function configSupportsUseCase(config: AiModelConfig, useCase?: AiUseCase) {
 
 function getAiConfig(user: SessionUser, useCase?: AiUseCase) {
   const configs = getAiConfigs(user);
+  const poolConfigs = getStore().aiModelConfigs
+    .filter((item) => item.scope === "tenant_pool" && item.teamId === user.teamId)
+    .sort((left, right) => Number(right.enabled) - Number(left.enabled) || right.updatedAt.localeCompare(left.updatedAt));
   return configs.find((item) => item.enabled && item.apiKey && configSupportsUseCase(item, useCase))
+    || poolConfigs.find((item) => item.enabled && item.apiKey && configSupportsUseCase(item, useCase))
     || configs.find((item) => configSupportsUseCase(item, useCase))
+    || poolConfigs.find((item) => configSupportsUseCase(item, useCase))
     || configs[0]
+    || poolConfigs[0]
     || null;
 }
 
@@ -19069,6 +19282,7 @@ function providerLabel(provider: string) {
     mistral: "Mistral",
     groq: "Groq",
     openrouter: "OpenRouter",
+    zhongkey: "中科云",
     ollama: "Ollama",
     custom: "自定义模型"
   };

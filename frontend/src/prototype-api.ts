@@ -230,6 +230,38 @@ interface PlatformAuditEvent {
   createdAt: string;
 }
 
+interface PlatformAiPoolConfig {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  providerName: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  hasApiKey: boolean;
+  enabled: boolean;
+  upstreamLimitCny: number;
+  retailCreditCny: number;
+  balance: { currency: "CNY"; granted: number; used: number; available: number; usagePercent: number };
+  lastTestAt: string;
+  lastTestStatus: "untested" | "passed" | "failed";
+  lastTestMessage: string;
+  lastUsageSyncAt: string;
+  lastUsageStatus: "untested" | "passed" | "failed";
+  lastUsageMessage: string;
+  updatedAt: string;
+}
+
+interface ApiBalanceView {
+  configured: boolean;
+  status: "ready" | "stale" | "unavailable";
+  providerName?: string;
+  model?: string;
+  balance?: { currency: "CNY"; granted: number; used: number; available: number; usagePercent: number };
+  lastSyncedAt?: string;
+  message: string;
+}
+
 interface ApprovalWorkflow {
   id: string;
   code: string;
@@ -3527,7 +3559,7 @@ let accessControlSelectedRoleId = "";
 let accessControlSelectedMemberId = "";
 let accessControlOrganizationFilter: "all" | "unassigned" = "all";
 let accessControlAuditEvents: AccessAuditEvent[] = [];
-type PlatformTab = "overview" | "tenants" | "support" | "operators" | "health" | "audit";
+type PlatformTab = "overview" | "tenants" | "ai-pool" | "support" | "operators" | "health" | "audit";
 let platformActiveTab: PlatformTab = "overview";
 let platformOverview: { metrics: Record<string, number>; generatedAt: string } | null = null;
 let platformTenants: PlatformTenant[] = [];
@@ -3535,6 +3567,10 @@ let platformSupportRequests: PlatformSupportRequest[] = [];
 let platformOperators: PlatformOperator[] = [];
 let platformHealthServices: Array<Record<string, unknown>> = [];
 let platformAuditEvents: PlatformAuditEvent[] = [];
+let platformAiPoolConfigs: PlatformAiPoolConfig[] = [];
+let platformAiPoolModels: Array<{ id: string; description: string; protocols: string[]; groups: string[] }> = [];
+let apiBalanceView: ApiBalanceView | null = null;
+let apiBalanceRefreshTimer = 0;
 let approvalWorkflows: ApprovalWorkflow[] = [];
 let approvalInstances: ApprovalInstance[] = [];
 let approvalTasks: ApprovalTask[] = [];
@@ -6435,6 +6471,7 @@ async function loadIamCapabilities(user: User) {
 const platformTabPermission: Record<PlatformTab, string> = {
   overview: "platform.dashboard.read",
   tenants: "platform.tenant.metadata.read",
+  "ai-pool": "platform.tenant.plan.manage",
   support: "platform.support.request.create",
   operators: "platform.operator.read",
   health: "platform.health.read",
@@ -6476,6 +6513,23 @@ function renderPlatformOverview() {
 function renderPlatformTenants() {
   return `<section class="platform-section" style="margin-top:0"><div class="platform-section-head"><h2>公司管理</h2><div class="platform-actions"><span class="platform-status active">${platformTenants.length} 家公司</span>${hasIamCapability("platform.tenant.create") ? `<button class="platform-command primary" type="button" data-platform-create-tenant>创建公司</button>` : ""}</div></div>
     <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>公司</th><th>状态</th><th>套餐</th><th>启用成员 / 席位</th><th>授权版本</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${platformTenantRows(platformTenants) || `<tr><td colspan="7" class="platform-empty">暂无公司</td></tr>`}</tbody></table></div>
+  </section>`;
+}
+
+function renderPlatformAiPool() {
+  const rows = platformAiPoolConfigs.map((config) => `<tr>
+    <td><div class="platform-cell-main"><b>${escapeHtml(config.tenantName)}</b><small>${escapeHtml(config.tenantId)}</small></div></td>
+    <td><div class="platform-cell-main"><b>中科云</b><small>${escapeHtml(config.apiKey || "Key 未配置")}</small></div></td>
+    <td><div class="platform-cell-main"><b>${escapeHtml(config.model)}</b><small>OpenAI 兼容 · /v1/chat/completions</small></div></td>
+    <td><div class="platform-cell-main"><b>¥${Number(config.upstreamLimitCny || 0).toFixed(2)}</b><small>仅平台可见</small></div></td>
+    <td><div class="platform-cell-main"><b>¥${Number(config.balance?.available || 0).toFixed(2)} / ¥${Number(config.retailCreditCny || 0).toFixed(2)}</b><small>客户工作台显示 · 已用 ${Number(config.balance?.usagePercent || 0).toFixed(1)}%</small></div></td>
+    <td><span class="platform-status ${config.lastTestStatus === "passed" && config.lastUsageStatus !== "failed" ? "active" : "suspended"}">${config.lastTestStatus === "passed" ? (config.lastUsageStatus === "failed" ? "余额同步异常" : "可用") : "连接异常"}</span><div class="platform-cell-main"><small>${escapeHtml(config.lastUsageSyncAt ? formatTime(config.lastUsageSyncAt) : "尚未同步")}</small></div></td>
+    <td><div class="platform-actions"><button class="platform-command" type="button" data-platform-ai-pool-sync="${escapeHtml(config.tenantId)}">刷新状态</button><button class="platform-command primary" type="button" data-platform-ai-pool-edit="${escapeHtml(config.tenantId)}">编辑</button></div></td>
+  </tr>`).join("");
+  return `<section class="platform-section" style="margin-top:0">
+    <div class="platform-section-head"><div><h2>模型池与客户额度</h2><p class="field-hint">中科云 Key 的真实限额只在平台侧保存；客户看到销售余额，系统按上游 Key 的真实使用比例同步扣减。</p></div><button class="platform-command primary" type="button" data-platform-ai-pool-create>发放模型额度</button></div>
+    <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>公司</th><th>上游</th><th>模型</th><th>Key 限额</th><th>客户余额</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="platform-empty">尚未给公司发放模型额度</td></tr>`}</tbody></table></div>
+    <div class="inline-alert" style="margin-top:16px"><b>按你的销售方式运行</b><span>例如中科云新 Key 限额填 10 元、客户显示余额填 100 元。Key 用掉 20% 后，客户页面自动显示剩余 80 元。</span> <a href="https://zhongkey.com/guide" target="_blank" rel="noopener">中科云接入说明</a></div>
   </section>`;
 }
 
@@ -6527,12 +6581,71 @@ function renderPlatformOperations() {
     platformActiveTab = (Object.keys(platformTabPermission) as PlatformTab[]).find((tab) => hasIamCapability(platformTabPermission[tab])) || "overview";
   }
   root.innerHTML = platformActiveTab === "tenants" ? renderPlatformTenants()
-    : platformActiveTab === "support" ? renderPlatformSupport()
+    : platformActiveTab === "ai-pool" ? renderPlatformAiPool()
+      : platformActiveTab === "support" ? renderPlatformSupport()
       : platformActiveTab === "operators" ? renderPlatformOperators()
         : platformActiveTab === "health" ? renderPlatformHealth()
           : platformActiveTab === "audit" ? renderPlatformAudit()
             : renderPlatformOverview();
   installPlatformOperationEvents();
+}
+
+function renderApiBalance() {
+  const view = apiBalanceView;
+  const status = qs<HTMLElement>("#apiBalanceStatus");
+  const available = qs<HTMLElement>("#apiBalanceAvailable");
+  const message = qs<HTMLElement>("#apiBalanceMessage");
+  const usage = qs<HTMLElement>("#apiBalanceUsage");
+  const model = qs<HTMLElement>("#apiBalanceModel");
+  const progress = qs<HTMLElement>("#apiBalanceProgress");
+  if (!status || !available || !message || !usage || !model || !progress) return;
+  status.className = "haituo-balance-status";
+  if (!view) {
+    status.textContent = "正在同步";
+    available.textContent = "—";
+    message.textContent = "正在读取海拓模型服务额度。";
+    usage.textContent = "正在查询。";
+    model.textContent = "正在查询。";
+    progress.style.width = "0";
+    return;
+  }
+  if (!view.configured || !view.balance) {
+    status.classList.add("is-error");
+    status.textContent = "尚未开通";
+    available.textContent = "¥0.00";
+    message.textContent = view.message || "请联系服务商开通模型额度。";
+    usage.textContent = "尚无可用额度。";
+    model.textContent = "模型服务尚未分配。";
+    progress.style.width = "0";
+    return;
+  }
+  if (view.status === "stale") status.classList.add("is-stale");
+  status.textContent = view.status === "ready" ? "服务正常" : "同步稍有延迟";
+  available.textContent = `¥${Number(view.balance.available).toFixed(2)}`;
+  message.textContent = view.message;
+  usage.textContent = `已用 ¥${Number(view.balance.used).toFixed(2)}，总额度 ¥${Number(view.balance.granted).toFixed(2)}；已使用 ${Number(view.balance.usagePercent).toFixed(1)}%。`;
+  model.textContent = `${view.providerName || "海拓模型服务"} · ${view.model || "已分配模型"}。${view.lastSyncedAt ? `最近同步 ${formatTime(view.lastSyncedAt)}。` : ""}`;
+  progress.style.width = `${Math.max(0, Math.min(100, Number(view.balance.usagePercent)))}%`;
+}
+
+async function refreshApiBalance(showToast = false) {
+  try {
+    apiBalanceView = await api<ApiBalanceView>("/api/ai-balance");
+    renderApiBalance();
+    if (showToast) toast("API 余额已刷新", "success");
+  } catch (error) {
+    apiBalanceView = { configured: false, status: "unavailable", message: error instanceof Error ? error.message : "余额读取失败" };
+    renderApiBalance();
+    if (showToast) toast(apiBalanceView.message, "error");
+  }
+}
+
+function syncApiBalanceRefresh(active: boolean) {
+  window.clearInterval(apiBalanceRefreshTimer);
+  apiBalanceRefreshTimer = 0;
+  if (!active) return;
+  void refreshApiBalance();
+  apiBalanceRefreshTimer = window.setInterval(() => void refreshApiBalance(), 60_000);
 }
 
 function approvalStatusLabel(status: string) {
@@ -6959,6 +7072,10 @@ async function refreshPlatformOperations() {
   if (hasIamCapability("platform.operator.read")) calls.push(api<{ operators: PlatformOperator[] }>("/api/platform/v1/operators").then((data) => { platformOperators = data.operators || []; }));
   if (hasIamCapability("platform.health.read")) calls.push(api<{ services: Array<Record<string, unknown>> }>("/api/platform/v1/health").then((data) => { platformHealthServices = data.services || []; }));
   if (hasIamCapability("platform.audit.read")) calls.push(api<{ events: PlatformAuditEvent[] }>("/api/platform/v1/audit?limit=100").then((data) => { platformAuditEvents = data.events || []; }));
+  if (hasIamCapability("platform.tenant.plan.manage")) {
+    calls.push(api<{ configs: PlatformAiPoolConfig[] }>("/api/platform/v1/ai-pool").then((data) => { platformAiPoolConfigs = data.configs || []; }));
+    if (!platformAiPoolModels.length) calls.push(api<{ models: Array<{ id: string; description: string; protocols: string[]; groups: string[] }> }>("/api/platform/v1/ai-pool/catalog").then((data) => { platformAiPoolModels = data.models || []; }));
+  }
   const results = await Promise.allSettled(calls);
   const failed = results.find((result) => result.status === "rejected");
   renderPlatformOperations();
@@ -6985,6 +7102,52 @@ function openPlatformTenantAdminCreator(tenantId: string) {
   openHaituoAccountCreator({
     submit: (input) => api(`/api/platform/v1/tenants/${encodeURIComponent(tenantId)}/quick-admin`, { method: "POST", body: JSON.stringify(input) }),
     refresh: async () => { await refreshPlatformOperations(); }
+  });
+}
+
+function openPlatformAiPoolEditor(tenantId = "") {
+  const current = platformAiPoolConfigs.find((item) => item.tenantId === tenantId);
+  const tenantOptions = platformTenants
+    .filter((tenant) => ["trial", "active"].includes(tenant.status))
+    .map((tenant) => `<option value="${escapeHtml(tenant.id)}" ${tenant.id === (current?.tenantId || tenantId) ? "selected" : ""}>${escapeHtml(tenant.name)}</option>`).join("");
+  const openaiModels = platformAiPoolModels.filter((model) => !model.protocols.length || model.protocols.includes("openai"));
+  const modelOptions = openaiModels.map((model) => `<option value="${escapeHtml(model.id)}" ${model.id === current?.model ? "selected" : ""}>${escapeHtml(model.id)}</option>`).join("");
+  const selectedModel = current?.model || openaiModels.find((item) => item.id === "gpt-5.6-terra")?.id || openaiModels[0]?.id || "gpt-5.6-terra";
+  openModal(current ? "编辑模型池额度" : "发放模型额度", `<div class="form-grid">
+    <div class="form-field full"><label>使用公司</label><select id="platformAiPoolTenant" ${current ? "disabled" : ""}>${tenantOptions}</select></div>
+    <div class="form-field full"><label>中科云 API Key</label><input id="platformAiPoolKey" type="password" autocomplete="off" placeholder="${current?.hasApiKey ? `已保存 ${escapeHtml(current.apiKey)}，留空继续使用` : "粘贴 sk- 开头的 Key"}"><small>只加密保存在云服务器数据库，保存后不再明文显示。</small></div>
+    <div class="form-field full"><label>模型</label><select id="platformAiPoolModel">${modelOptions || `<option value="${escapeHtml(selectedModel)}">${escapeHtml(selectedModel)}</option>`}</select><small>目录实时读取自中科云；保存时会真实调用一次，确认 Key、分组和模型都能使用。</small></div>
+    <div class="form-field"><label>中科云 Key 限额（元）</label><input id="platformAiPoolUpstream" type="number" min="0.01" step="0.01" value="${Number(current?.upstreamLimitCny || 10)}"><small>你的成本，仅平台可见。</small></div>
+    <div class="form-field"><label>客户显示余额（元）</label><input id="platformAiPoolRetail" type="number" min="0.01" step="0.01" value="${Number(current?.retailCreditCny || 100)}"><small>客户工作台显示这个金额。</small></div>
+    <div class="form-field full"><div class="inline-alert"><b>示例</b><span>左边填 10，右边填 100；客户第一次登录会看到 API 余额 ¥100.00。</span></div></div>
+  </div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="platformAiPoolSave">验证并保存</button>`);
+  const modelSelect = qs<HTMLSelectElement>("#platformAiPoolModel");
+  if (modelSelect && [...modelSelect.options].some((option) => option.value === selectedModel)) modelSelect.value = selectedModel;
+  qs<HTMLButtonElement>("#platformAiPoolSave")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const original = button.textContent || "验证并保存";
+    button.disabled = true;
+    button.textContent = "正在验证中科云";
+    try {
+      await api("/api/platform/v1/ai-pool", {
+        method: "POST",
+        body: JSON.stringify({
+          tenantId: qs<HTMLSelectElement>("#platformAiPoolTenant")?.value,
+          model: qs<HTMLSelectElement>("#platformAiPoolModel")?.value,
+          apiKey: qs<HTMLInputElement>("#platformAiPoolKey")?.value.trim() || "",
+          upstreamLimitCny: Number(qs<HTMLInputElement>("#platformAiPoolUpstream")?.value || 0),
+          retailCreditCny: Number(qs<HTMLInputElement>("#platformAiPoolRetail")?.value || 0)
+        })
+      });
+      closeModal();
+      toast("中科云模型已验证，客户额度已发放", "success");
+      await refreshPlatformOperations();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "模型池保存失败", "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
   });
 }
 
@@ -7021,6 +7184,12 @@ function installPlatformOperationEvents() {
   qsa<HTMLButtonElement>("[data-platform-open-tab]").forEach((button) => button.onclick = () => { platformActiveTab = button.dataset.platformOpenTab as PlatformTab; renderPlatformOperations(); });
   qs<HTMLButtonElement>("[data-platform-create-tenant]")?.addEventListener("click", openPlatformTenantCreator);
   qsa<HTMLButtonElement>("[data-platform-bootstrap-admin]").forEach((button) => button.onclick = () => openPlatformTenantAdminCreator(button.dataset.tenantId || ""));
+  qs<HTMLButtonElement>("[data-platform-ai-pool-create]")?.addEventListener("click", () => openPlatformAiPoolEditor());
+  qsa<HTMLButtonElement>("[data-platform-ai-pool-edit]").forEach((button) => button.onclick = () => openPlatformAiPoolEditor(button.dataset.platformAiPoolEdit || ""));
+  qsa<HTMLButtonElement>("[data-platform-ai-pool-sync]").forEach((button) => button.onclick = () => void runPlatformMutation(
+    () => api(`/api/platform/v1/ai-pool/${encodeURIComponent(button.dataset.platformAiPoolSync || "")}/sync`, { method: "POST", body: "{}" }),
+    "中科云额度状态已同步"
+  ));
   qs<HTMLButtonElement>("[data-platform-create-support]")?.addEventListener("click", openPlatformSupportCreator);
   qsa<HTMLButtonElement>("[data-platform-tenant-action]").forEach((button) => button.onclick = () => {
     const action = button.dataset.platformTenantAction as "suspend" | "restore"; const tenantId = button.dataset.tenantId || "";
@@ -32132,6 +32301,13 @@ function installEvents() {
   ensureUiLayer();
   installIntegrationCenterInteractions();
   setupApprovalEvents();
+  qs<HTMLButtonElement>("#apiBalanceRefresh")?.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const original = button.textContent || "刷新余额";
+    button.disabled = true;
+    button.textContent = "同步中";
+    void refreshApiBalance(true).finally(() => { button.disabled = false; button.textContent = original; });
+  });
   qs<HTMLButtonElement>("#prospectRadarCloseButton")?.addEventListener("click", closeProspectRadar);
   qs<HTMLButtonElement>("#prospectRadarPlayButton")?.addEventListener("click", (event) => {
     const button = event.currentTarget as HTMLButtonElement;
@@ -34678,6 +34854,7 @@ function activateNavView(view: string, after?: () => void) {
   const legacyWorkspace = qs<HTMLElement>("main.main > .workspace");
   if (legacyWorkspace) legacyWorkspace.hidden = !legacyWorkspace.querySelector(":scope > .view.active");
   document.body.classList.toggle("is-whatsapp-view", view === "whatsapp");
+  syncApiBalanceRefresh(view === "api-balance");
   syncLeadTaskDetailClock(view === "lead-task-detail");
   syncWhatsAppRefresh(false);
   renderTopbarForView(view);
