@@ -6284,47 +6284,6 @@
     .ai-provider-card[data-ai-provider="baidu"] { --accent: #2563eb; --accent-soft: #eff6ff; }
     .ai-provider-card[data-ai-provider="mistral"] { --accent: #f97316; --accent-soft: #fff7ed; }
 
-    .ai-free-fallback {
-      margin: 0 0 14px;
-      padding: 14px 16px;
-      border: 1px solid rgba(22, 163, 106, .28);
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(236, 253, 245, .92) 0%, rgba(220, 252, 231, .55) 100%);
-      box-shadow: 0 4px 14px rgba(22, 163, 106, .06), inset 0 1px 0 rgba(255,255,255,.8);
-    }
-    .ai-free-fallback-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 8px;
-    }
-    .ai-free-fallback-head::before {
-      content: "✦";
-      display: grid;
-      place-items: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      color: #0a7d3b;
-      background: rgba(255,255,255,.8);
-      font-size: 13px;
-      box-shadow: 0 2px 6px rgba(22,163,106,.12);
-    }
-    .ai-free-fallback-head b { color: #065f46; font-size: 14px; }
-    .ai-free-fallback-sub { margin: 0 0 10px; color: #334155; font-size: 12.5px; line-height: 1.65; }
-    .ai-free-steps {
-      margin: 0 0 10px;
-      padding-left: 20px;
-      color: #334155;
-      font-size: 12.5px;
-      line-height: 1.9;
-    }
-    .ai-free-steps li::marker { color: #10b981; }
-    .ai-free-steps a { color: var(--brand); font-weight: 700; }
-    .ai-free-note { margin: 0; color: #475569; font-size: 12px; line-height: 1.6; }
-    .ai-free-note a { color: var(--brand); font-weight: 700; }
-
     .ai-provider-badges {
       display: flex;
       align-items: center;
