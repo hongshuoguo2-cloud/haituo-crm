@@ -1,4 +1,5 @@
 import cors from "cors";
+import compression from "compression";
 import { generateAccountCredentials } from "./haituo-accounts.js";
 import { signPasswordChangeToken, verifyPasswordChangeToken } from "./auth.js";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -511,6 +512,7 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
+app.use(compression({ threshold: 1_024 }));
 app.use((req, res, next) => {
   if (!originAllowed(req.headers.origin)) {
     res.status(403).json({ message: "不允许的请求来源" });
@@ -3986,7 +3988,6 @@ app.get("/api/platform/v1/audit", requireAuth, asyncRoute(async (req, res) => {
   const limit = z.coerce.number().int().min(1).max(500).default(100).parse(req.query.limit);
   await sendPlatformAction(res, () => service.listAudit(req.user!, limit), "平台审计读取失败");
 }));
-
 function tenantAiPoolConfig(tenantId: string) {
   return getStore().aiModelConfigs
     .filter((item) => item.scope === "tenant_pool" && item.teamId === tenantId)
@@ -19980,12 +19981,17 @@ async function startServer() {
   if (communicationFrontendDist && existsSync(communicationFrontendDist)) {
     app.use("/whatsapp-plugin", express.static(communicationFrontendDist, {
       index: false,
-      maxAge: "7d",
+      maxAge: "1d",
       setHeaders: (res, filePath) => {
-        if (filePath.endsWith(".html")) res.setHeader("Cache-Control", "no-store");
+        if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
       }
     }));
     app.get("/whatsapp-plugin/*", (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.resolve(communicationFrontendDist, "index.html"));
     });
     console.log(`GoodJob CRM serving Communication frontend from ${communicationFrontendDist}`);
@@ -19993,10 +19999,14 @@ async function startServer() {
   if (existsSync(frontendDist)) {
     app.use(express.static(frontendDist, {
       index: false,
-      maxAge: "7d",
+      maxAge: "1d",
       setHeaders: (res, filePath) => {
         if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (path.basename(filePath) === "product-config.json") {
           res.setHeader("Cache-Control", "no-store");
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         }
       }
     }));
@@ -20005,6 +20015,7 @@ async function startServer() {
       if (req.path.startsWith("/api/") || req.path.startsWith("/uploads/")) {
         return next();
       }
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.resolve(frontendDist, "index.html"));
     });
     console.log(`GoodJob CRM serving frontend from ${frontendDist}`);

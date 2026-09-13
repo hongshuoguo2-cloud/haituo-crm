@@ -1,8 +1,6 @@
 type Role = "sales" | "manager" | "admin" | "super_admin";
 type DashboardPeriod = "today" | "week" | "month";
 
-import * as XLSX from "xlsx";
-import * as echarts from "echarts";
 import isoCountries from "i18n-iso-countries";
 import enCountries from "i18n-iso-countries/langs/en.json";
 import zhCountries from "i18n-iso-countries/langs/zh.json";
@@ -38,7 +36,15 @@ const countryFlagAssets = Object.fromEntries(Object.entries(import.meta.glob(
   { eager: true, query: "?url", import: "default" }
 ) as Record<string, string>).map(([file, url]) => [file.split("/").pop()?.replace(/\.svg$/u, "") || "", url]));
 
-let dashboardLeadFunnelChart: ReturnType<typeof echarts.init> | null = null;
+type EChartsInstance = import("echarts").ECharts;
+type XlsxModule = typeof import("xlsx");
+
+let echartsModulePromise: Promise<typeof import("echarts")> | null = null;
+let xlsxModulePromise: Promise<XlsxModule> | null = null;
+const loadEcharts = () => echartsModulePromise ||= import("echarts");
+const loadXlsx = () => xlsxModulePromise ||= import("xlsx");
+
+let dashboardLeadFunnelChart: EChartsInstance | null = null;
 let dashboardLeadFunnelResizeObserver: ResizeObserver | null = null;
 let dashboardRefreshPromise: Promise<void> | null = null;
 let customerMapController: CustomerMapController | null = null;
@@ -7799,7 +7805,7 @@ function formatTodoTime(value = ""): string {
   return text;
 }
 
-function renderLeadFunnel(summary: DashboardSummary) {
+async function renderLeadFunnel(summary: DashboardSummary) {
   const funnel = qs<HTMLElement>("#dashboardLeadFunnel");
   if (!funnel) return;
   dashboardLeadFunnelResizeObserver?.disconnect();
@@ -7847,6 +7853,8 @@ function renderLeadFunnel(summary: DashboardSummary) {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const maxCount = Math.max(1, ...data.stages.map((stage) => stage.count));
     try {
+      const echarts = await loadEcharts();
+      if (!chartHost.isConnected) return;
       const chart = echarts.init(chartHost, undefined, { renderer: "svg" });
       dashboardLeadFunnelChart = chart;
       chart.setOption({
@@ -14029,6 +14037,7 @@ async function toggleCommissionRule(id: string) {
 }
 
 async function exportCommission() {
+  const XLSX = await loadXlsx();
   const result = await api<{ exportJob: { id: string; rows: number }; rows: Record<string, unknown>[]; summaryRows: Record<string, unknown>[] }>("/api/commission/export", {
     method: "POST",
     body: JSON.stringify({
@@ -17133,6 +17142,7 @@ function assertImportFile(file: File) {
 
 async function parseCustomerImportFile(file: File): Promise<CustomerImportRow[]> {
   assertImportFile(file);
+  const XLSX = await loadXlsx();
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", dense: true, sheetRows: 2002 });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -17214,6 +17224,7 @@ async function importCustomersFromFile(button?: HTMLButtonElement) {
 
 async function exportCustomers() {
   try {
+    const XLSX = await loadXlsx();
     const result = await api<{ customers: Customer[]; job: ImportExportJob }>("/api/import-export/customers/export", { method: "POST" });
     const rows = result.customers.map((customer) => ({
       客户ID: customer.id,
@@ -17247,7 +17258,8 @@ async function exportCustomers() {
   }
 }
 
-function downloadCustomerTemplate() {
+async function downloadCustomerTemplate() {
+  const XLSX = await loadXlsx();
   const worksheet = XLSX.utils.aoa_to_sheet([["客户ID", "公司简称", "公司全名", "国家", "联系人", "电话", "邮箱", "联系方式备注（其它渠道）", "官网", "客户来源", "成交状态", "阶段", "预计金额", "健康度", "下一提醒"]]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "客户导入模板");
@@ -18439,6 +18451,7 @@ function rowValue(row: Record<string, unknown>, keys: string[]) {
 
 async function parseQuestionFile(file: File): Promise<ExamImportQuestion[]> {
   assertImportFile(file);
+  const XLSX = await loadXlsx();
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", dense: true, sheetRows: 502 });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -18503,6 +18516,7 @@ async function importQuestionBank(button?: HTMLButtonElement) {
 
 async function exportQuestionBank() {
   try {
+    const XLSX = await loadXlsx();
     const result = await api<{ questions: ExamQuestion[] }>("/api/exam-questions/export");
     const rows = result.questions.map((question) => ({
       题干: question.stem,
@@ -30436,13 +30450,14 @@ async function createLeadFinderTodos(button?: HTMLButtonElement) {
   }
 }
 
-function exportLeadFinderRows() {
+async function exportLeadFinderRows() {
   const rows = collectLeadFinderRows();
   const source = rows.length ? rows : currentLeadFinderResults();
   if (!source.length) {
     toast("暂无搜客结果可导出", "error");
     return;
   }
+  const XLSX = await loadXlsx();
   const worksheet = XLSX.utils.json_to_sheet(source.map((item) => ({
     "公司名": item.company,
     "业务": item.business,

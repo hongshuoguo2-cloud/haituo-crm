@@ -7,7 +7,9 @@ import {
   resolveLeadSearchSources
 } from "./lead-source-selection.js";
 
-const prototype = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const prototypeMarkup = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const prototypeStyles = readFileSync(new URL("./prototype.css", import.meta.url), "utf8");
+const prototype = `${prototypeMarkup}\n${prototypeStyles}`;
 const apiLayer = readFileSync(new URL("./prototype-api.ts", import.meta.url), "utf8");
 const prospectRadar = readFileSync(new URL("./prospect-radar.ts", import.meta.url), "utf8");
 const integrationCenter = readFileSync(new URL("./integrations/integration-center.ts", import.meta.url), "utf8");
