@@ -8,6 +8,7 @@ $haituoNode = if ($NodePath) { $NodePath } else { (Get-Command node.exe -ErrorAc
 $haituoLog = Join-Path $haituoLogDir ('web-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 $env:PORT = '4188'
 $env:BACKEND_HOST = '127.0.0.1'
+$env:COMMUNICATION_API_ORIGIN = 'http://127.0.0.1:3100'
 $env:WHATSAPP_PLUGIN_PORT = '3100'
 $env:WHATSAPP_PLUGIN_INTERNAL_URL = 'http://127.0.0.1:3100'
 & $haituoNode --env-file="$haituoApp\.env" "$haituoApp\backend\dist\server.js" *> $haituoLog
