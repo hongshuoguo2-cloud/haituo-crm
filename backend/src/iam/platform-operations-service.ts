@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type mysql from "mysql2/promise";
 import type { SessionUser } from "../types.js";
 import { hashPassword } from "../auth.js";
+import { normalizeMainlandPhone } from "../haituo-accounts.js";
 import { IAM_PERMISSION_CATALOG, legacyPermissionScope } from "./iam-foundation.js";
 
 type AuditContext = { requestId?: string; ip?: string };
@@ -188,7 +189,8 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
           COUNT(tm.id) AS member_count,
           SUM(CASE WHEN tm.status = 'active' THEN 1 ELSE 0 END) AS active_member_count,
           MAX(CASE WHEN tm.status = 'active' AND u.status = 'active' AND u.role = 'admin' THEN u.name ELSE NULL END) AS administrator_name,
-          MAX(CASE WHEN tm.status = 'active' AND u.status = 'active' AND u.role = 'admin' THEN u.email ELSE NULL END) AS administrator_email
+          MAX(CASE WHEN tm.status = 'active' AND u.status = 'active' AND u.role = 'admin' THEN u.email ELSE NULL END) AS administrator_email,
+          MAX(CASE WHEN tm.status = 'active' AND u.status = 'active' AND u.role = 'admin' THEN u.phone ELSE NULL END) AS administrator_phone
          FROM tenants t
          LEFT JOIN tenant_memberships tm ON tm.tenant_id = t.id
          LEFT JOIN users u ON u.id = tm.user_id
@@ -202,6 +204,7 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
         memberCount: Number(row.member_count), activeMemberCount: Number(row.active_member_count),
         administratorName: String(row.administrator_name || ""),
         administratorEmail: String(row.administrator_email || ""),
+        administratorPhone: String(row.administrator_phone || ""),
         authorizationRevision: Number(row.authz_revision),
         trialExpiresAt: row.trial_expires_at ? new Date(row.trial_expires_at).toISOString() : "",
         createdAt: new Date(row.created_at).toISOString()
@@ -246,9 +249,11 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
     async bootstrapTenantAdmin(actor, tenantId, input, context) {
       const name = String(input.name || "").trim();
       const email = String(input.email || "").trim().toLowerCase();
+      const phone = normalizeMainlandPhone(input.phone);
       const password = String(input.password || "");
       const reason = String(input.reason || "公司管理员初始化").trim();
       if (!name || !/^\S+@\S+\.\S+$/u.test(email) || password.length < 12) fail(400, "管理员姓名、邮箱或初始密码不符合要求");
+      if (input.phone && !phone) fail(400, "请输入正确的中国大陆手机号");
       return withTransaction(pool, async (connection) => {
         const operatorId = await requirePlatformPermission(connection, actor, "platform.tenant.admin.bootstrap");
         const tenant = one<any>((await connection.query(`SELECT id, status FROM tenants WHERE id = ? FOR UPDATE`, [tenantId]))[0]);
@@ -257,18 +262,19 @@ export function createPlatformOperationsService(pool: mysql.Pool): PlatformOpera
         if (existingAdmin) fail(409, "该公司已经存在管理员");
         const duplicateEmail = one<any>((await connection.query(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]))[0]);
         if (duplicateEmail) fail(409, "该邮箱已被使用");
+        if (phone && one<any>((await connection.query(`SELECT id FROM users WHERE phone = ? LIMIT 1`, [phone]))[0])) fail(409, "该手机号已开户");
         const root = one<any>((await connection.query(`SELECT id FROM organization_units WHERE tenant_id = ? AND unit_type = 'company' AND status = 'active' LIMIT 1`, [tenantId]))[0]);
         const role = one<any>((await connection.query(`SELECT id FROM roles WHERE tenant_id = ? AND code IN ('company_admin','legacy_admin') AND status = 'active' ORDER BY code = 'company_admin' DESC LIMIT 1`, [tenantId]))[0]);
         if (!root || !role) fail(409, "公司组织或管理员角色尚未初始化");
         const userId = id("user").slice(0, 64); const membershipId = id("mem");
-        await connection.query(`INSERT INTO users (id, name, email, password_hash, role, team_id, avatar, status, auth_version) VALUES (?, ?, ?, ?, 'admin', ?, ?, 'active', 1)`, [userId, name, email, await hashPassword(password), tenantId, name.slice(0, 2).toUpperCase()]);
+        await connection.query(`INSERT INTO users (id, name, email, phone, password_hash, role, team_id, avatar, status, auth_version) VALUES (?, ?, ?, NULLIF(?, ''), ?, 'admin', ?, ?, 'active', 1)`, [userId, name, email, phone, await hashPassword(password), tenantId, name.slice(0, 2).toUpperCase()]);
         if (input.mustChangePassword === true) await connection.query(`UPDATE users SET must_change_password = TRUE WHERE id = ?`, [userId]);
         await connection.query(`INSERT INTO tenant_memberships (id, tenant_id, user_id, status, primary_org_unit_id, membership_auth_version, joined_at, invited_by, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, 1, NOW(3), ?, NOW(3), NOW(3))`, [membershipId, tenantId, userId, root.id, operatorId]);
         await connection.query(`INSERT INTO organization_memberships (id, tenant_id, membership_id, org_unit_id, relation_type, valid_from, created_by, created_at) VALUES (?, ?, ?, ?, 'primary', NOW(3), ?, NOW(3))`, [id("om"), tenantId, membershipId, root.id, operatorId]);
         await connection.query(`INSERT INTO member_role_assignments (id, tenant_id, membership_id, role_id, scope_anchor_org_unit_id, status, reason, granted_by, created_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, NOW(3))`, [id("mra"), tenantId, membershipId, role.id, root.id, reason, operatorId]);
         await connection.query(`UPDATE tenants SET authz_revision = authz_revision + 1, updated_at = NOW(3) WHERE id = ?`, [tenantId]);
-        const auditId = await writeAudit(connection, operatorId, "platform.tenant.admin.bootstrap", "tenant_membership", membershipId, tenantId, reason, { userId, email }, context);
-        return { ok: true, administrator: { id: userId, membershipId, name, email, tenantId }, auditId };
+        const auditId = await writeAudit(connection, operatorId, "platform.tenant.admin.bootstrap", "tenant_membership", membershipId, tenantId, reason, { userId, phone }, context);
+        return { ok: true, administrator: { id: userId, membershipId, name, email, phone, tenantId }, auditId };
       });
     },
 

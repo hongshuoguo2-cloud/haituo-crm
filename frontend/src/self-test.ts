@@ -14,6 +14,7 @@ const apiLayer = readFileSync(new URL("./prototype-api.ts", import.meta.url), "u
 const prospectRadar = readFileSync(new URL("./prospect-radar.ts", import.meta.url), "utf8");
 const integrationCenter = readFileSync(new URL("./integrations/integration-center.ts", import.meta.url), "utf8");
 const platformOperationsService = readFileSync(new URL("../../backend/src/iam/platform-operations-service.ts", import.meta.url), "utf8");
+const backendServer = readFileSync(new URL("../../backend/src/server.ts", import.meta.url), "utf8");
 const productConfig = JSON.parse(readFileSync(new URL("../public/product-config.json", import.meta.url), "utf8")) as {
   productName?: string;
   version?: string;
@@ -376,6 +377,9 @@ assert.match(prototype, /id="apiBalanceKeyInput"/, "公司管理员必须可以�
 assert.match(apiLayer, /\/api\/platform\/v1\/ai-pool/, "平台运维必须通过模型池接口发放额度");
 assert.match(apiLayer, /data-platform-copy-admin/, "平台公司列表必须支持复制公司管理员账号");
 assert.match(platformOperationsService, /administrator_email/, "平台公司目录必须返回公司管理员登录账号");
+assert.match(platformOperationsService, /administrator_phone/, "平台公司目录必须优先返回公司管理员手机号");
+assert.match(apiLayer, /id=\"iamNewMemberPhone\"/, "成员开户必须要求填写登录手机号");
+assert.match(backendServer, /credentials: \{ phone: credentials\.phone, password: credentials\.password \}/, "开户结果只能向前端返回手机号和初始密码");
 assert.match(apiLayer, /\/api\/ai-balance/, "用户工作台必须从服务端同步 API 销售余额");
 assert.match(apiLayer, /\/api\/ai-balance\/bind/, "公司管理员绑定密钥后必须自动激活余额");
 assert.equal(prototype.includes("计费服务尚未接入"), false, "API 余额页面不能继续显示占位文案");

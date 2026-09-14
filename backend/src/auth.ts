@@ -70,6 +70,7 @@ export function publicUser(user: ReturnType<typeof getStore>["users"][number]): 
     id: user.id,
     name: user.name,
     email: user.email,
+    phone: user.phone || "",
     role: user.role,
     teamId: user.teamId,
     avatar: user.avatar,
@@ -194,7 +195,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
   if (user.mustChangePassword) {
-    res.status(401).json({ message: "请重新登录并修改临时密码" });
+    res.status(401).json({ message: "请重新登录并修改初始密码" });
     return;
   }
   const resolvedDataScope = req.user?.id === user.id ? req.user.iamDataScope : undefined;

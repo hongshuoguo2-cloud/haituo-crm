@@ -2210,6 +2210,7 @@ async function ensureSchema(pool: mysql.Pool) {
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(180) NOT NULL UNIQUE,
+    phone VARCHAR(32) NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL,
     team_id VARCHAR(64) NOT NULL,
@@ -2232,6 +2233,8 @@ async function ensureSchema(pool: mysql.Pool) {
   )`);
   await pool.query("ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL");
   await pool.query("ALTER TABLE users MODIFY status VARCHAR(20) NOT NULL DEFAULT 'active'");
+  await ensureColumn(pool, "users", "phone", "VARCHAR(32) NULL");
+  await ensureUniqueIndex(pool, "users", "uk_users_phone", ["phone"]);
   await ensureColumn(pool, "users", "outbound_email", "VARCHAR(180) DEFAULT ''");
   await ensureColumn(pool, "users", "email_sender_name", "VARCHAR(120) DEFAULT ''");
   await ensureColumn(pool, "users", "email_signature", "TEXT");
@@ -5994,6 +5997,7 @@ async function loadUsers(pool: mysql.Pool): Promise<User[]> {
     id: row.id,
     name: row.name,
     email: row.email,
+    phone: row.phone || "",
     password: row.password_hash,
     role: row.role,
     teamId: row.team_id,
@@ -11400,7 +11404,7 @@ async function persistAll(pool: mysql.Pool, store: CrmStore) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    await upsertRows(connection, "users", store.users, (item) => [item.id, item.name, item.email, item.password, item.role, item.teamId, item.avatar, item.status, item.authVersion || 1, item.mustChangePassword ?? false, item.outboundEmail || "", item.emailSenderName ?? "", item.emailSignature || "", item.smtpHost || "", item.smtpPort || 465, item.smtpSecure ?? true, item.smtpUser || "", encryptMailCredential({ id: item.id, teamId: item.teamId, kind: "smtp" }, item.smtpPassword || ""), item.lastDevelopmentEmailAt ? mysqlDate(item.lastDevelopmentEmailAt) : null, item.lastDevelopmentEmailTo || "", item.lastDevelopmentEmailSubject || "", item.reportNote || "", item.imapHost || "", item.imapPort || 993, item.imapSecure ?? true, item.imapUser || "", encryptMailCredential({ id: item.id, teamId: item.teamId, kind: "imap" }, item.imapPassword || ""), item.inboundSyncEnabled ?? false, item.lastInboundSyncAt ? mysqlDate(item.lastInboundSyncAt) : null, item.lastInboundSyncStatus || "", item.lastInboundSyncError || "", item.lastInboundUid || 0, item.inboundUidValidity || ""], "(id,name,email,password_hash,role,team_id,avatar,status,auth_version,must_change_password,outbound_email,email_sender_name,email_signature,smtp_host,smtp_port,smtp_secure,smtp_user,smtp_password,last_development_email_at,last_development_email_to,last_development_email_subject,report_note,imap_host,imap_port,imap_secure,imap_user,imap_password,inbound_sync_enabled,last_inbound_sync_at,last_inbound_sync_status,last_inbound_sync_error,last_inbound_uid,inbound_uid_validity)");
+    await upsertRows(connection, "users", store.users, (item) => [item.id, item.name, item.email, item.phone || null, item.password, item.role, item.teamId, item.avatar, item.status, item.authVersion || 1, item.mustChangePassword ?? false, item.outboundEmail || "", item.emailSenderName ?? "", item.emailSignature || "", item.smtpHost || "", item.smtpPort || 465, item.smtpSecure ?? true, item.smtpUser || "", encryptMailCredential({ id: item.id, teamId: item.teamId, kind: "smtp" }, item.smtpPassword || ""), item.lastDevelopmentEmailAt ? mysqlDate(item.lastDevelopmentEmailAt) : null, item.lastDevelopmentEmailTo || "", item.lastDevelopmentEmailSubject || "", item.reportNote || "", item.imapHost || "", item.imapPort || 993, item.imapSecure ?? true, item.imapUser || "", encryptMailCredential({ id: item.id, teamId: item.teamId, kind: "imap" }, item.imapPassword || ""), item.inboundSyncEnabled ?? false, item.lastInboundSyncAt ? mysqlDate(item.lastInboundSyncAt) : null, item.lastInboundSyncStatus || "", item.lastInboundSyncError || "", item.lastInboundUid || 0, item.inboundUidValidity || ""], "(id,name,email,phone,password_hash,role,team_id,avatar,status,auth_version,must_change_password,outbound_email,email_sender_name,email_signature,smtp_host,smtp_port,smtp_secure,smtp_user,smtp_password,last_development_email_at,last_development_email_to,last_development_email_subject,report_note,imap_host,imap_port,imap_secure,imap_user,imap_password,inbound_sync_enabled,last_inbound_sync_at,last_inbound_sync_status,last_inbound_sync_error,last_inbound_uid,inbound_uid_validity)");
     await replaceRows(connection, "company_profiles", store.companyProfiles, (item) => [item.teamId, item.companyName, item.website, item.productSummary, item.address, item.phone, item.email, item.updatedBy, mysqlDate(item.updatedAt)], "(team_id,company_name,website,product_summary,address,phone,email,updated_by,updated_at)");
     await replaceRows(connection, "document_letterheads", store.documentLetterheads, (item) => [item.id, item.teamId, item.name, item.companyName, item.address, item.phone, item.email, item.website, item.bankInfo, item.logoUrl, JSON.stringify(normalizeDocumentAssetPlacement(item.logoPlacement)), item.isDefault, item.enabled, item.updatedBy, mysqlDate(item.updatedAt)], "(id,team_id,asset_name,company_name,address,phone,email,website,bank_info,logo_url,logo_placement_json,is_default,enabled,updated_by,updated_at)");
     await replaceRows(connection, "document_stamps", store.documentStamps, (item) => [item.id, item.teamId, item.name, item.imageUrl, JSON.stringify(normalizeDocumentAssetPlacement(item.placement)), item.isDefault, item.enabled, item.updatedBy, mysqlDate(item.updatedAt)], "(id,team_id,asset_name,image_url,placement_json,is_default,enabled,updated_by,updated_at)");

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type mysql from "mysql2/promise";
 import type { SessionUser } from "../types.js";
 import { hashPassword, isPlatformIdentity } from "../auth.js";
+import { normalizeMainlandPhone } from "../haituo-accounts.js";
 import {
   IAM_FOUNDATION_SCHEMA_VERSION,
   IAM_PERMISSION_CATALOG,
@@ -164,7 +165,7 @@ async function audit(connection: mysql.PoolConnection, actor: SessionUser, tenan
 async function queryOverview(pool: Queryable, tenantId: string) {
   const [tenantResult, memberResult, orgResult, roleResult, permissionResult, bindingResult, relationResult] = await Promise.all([
     pool.query(`SELECT id, name, status, plan_code, seat_limit, authz_revision FROM tenants WHERE id = ? LIMIT 1`, [tenantId]),
-    pool.query(`SELECT tm.id, tm.user_id, tm.employee_no, tm.title, tm.status, tm.primary_org_unit_id, u.name, u.email, u.avatar, u.role AS legacy_role
+    pool.query(`SELECT tm.id, tm.user_id, tm.employee_no, tm.title, tm.status, tm.primary_org_unit_id, u.name, u.email, u.phone, u.avatar, u.role AS legacy_role
       FROM tenant_memberships tm JOIN users u ON u.id = tm.user_id WHERE tm.tenant_id = ? ORDER BY tm.status, u.name`, [tenantId]),
     pool.query(`SELECT id, parent_id, name, code, unit_type AS type, status, path FROM organization_units WHERE tenant_id = ? ORDER BY path, sort_order, name`, [tenantId]),
     pool.query(`SELECT id, name, code, description, source, status, is_protected, version_no FROM roles WHERE tenant_id = ? ORDER BY is_protected DESC, name`, [tenantId]),
@@ -182,7 +183,7 @@ async function queryOverview(pool: Queryable, tenantId: string) {
   const bindingRows = bindingResult[0];
   const relationRows = rows<any>(relationResult[0]);
   const members: any[] = rows<any>(memberRows).map((member) => ({
-    id: member.user_id, membershipId: member.id, name: member.name, email: member.email, avatar: member.avatar || "",
+    id: member.user_id, membershipId: member.id, name: member.name, email: member.email, phone: member.phone || "", avatar: member.avatar || "",
     status: member.status === "active" ? "active" : "disabled", roleId: "", roleCode: member.legacy_role || "sales",
     roleName: roleNames[member.legacy_role] || member.legacy_role || "未配置角色", employeeNo: member.employee_no || "", title: member.title || "",
     organizationUnitId: member.primary_org_unit_id || "", organizationUnitName: "未分配组织"
@@ -300,24 +301,31 @@ export function createIamManagementService(pool: mysql.Pool): IamManagementServi
         await connection.beginTransaction();
         let targetType = "tenant"; let targetId = tenantId; let before: unknown = null; let after: unknown = null;
         if (operation === "member.create") {
-          const name = String(payload.name || "").trim(); const email = String(payload.email || "").trim().toLowerCase(); const password = String(payload.password || ""); const roleId = String(payload.roleId || "");
+          const name = String(payload.name || "").trim(); const email = String(payload.email || "").trim().toLowerCase(); const phone = normalizeMainlandPhone(payload.phone); const password = String(payload.password || ""); const roleId = String(payload.roleId || "");
           if (!name || !email || password.length < 8 || !roleId) throw Object.assign(new Error("成员姓名、邮箱、密码和角色不能为空"), { status: 400 });
+          if (payload.phone && !phone) throw Object.assign(new Error("请输入正确的中国大陆手机号"), { status: 400 });
           const role = one<any>((await connection.query(`SELECT id, code, status FROM roles WHERE tenant_id = ? AND id = ? AND status = 'active'`, [tenantId, roleId]))[0]); if (!role) throw Object.assign(new Error("角色不存在或已停用"), { status: 400 });
           const [roleBindings] = await connection.query(`SELECT permission_code AS permissionCode, scope_mode AS scopeMode FROM role_permission_bindings WHERE tenant_id = ? AND role_id = ?`, [tenantId, roleId]);
           if (!isPlatformIdentity(actor)) await assertDelegableBindings(connection, actor, rows<{ permissionCode: string; scopeMode: IamScopeMode }>(roleBindings));
           const [existing] = await connection.query(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]); if (one(existing)) throw Object.assign(new Error("邮箱已被使用"), { status: 409 });
+          if (phone) { const [existingPhone] = await connection.query(`SELECT id FROM users WHERE phone = ? LIMIT 1`, [phone]); if (one(existingPhone)) throw Object.assign(new Error("该手机号已开户"), { status: 409 }); }
           const userId = id("user"); const membershipId = id("mem"); const root = one<any>((await connection.query(`SELECT id FROM organization_units WHERE tenant_id = ? AND unit_type = 'company' LIMIT 1`, [tenantId]))[0]);
           const legacyRole = protectedRoleTemplate(String(role.code)) || (["sales", "manager", "admin"].includes(role.code) ? role.code : "sales");
-          await connection.query(`INSERT INTO users (id, name, email, password_hash, role, team_id, avatar, status, auth_version) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1)`, [userId, name, email, await hashPassword(password), legacyRole, tenantId, name.slice(0, 2).toUpperCase()]);
+          await connection.query(`INSERT INTO users (id, name, email, phone, password_hash, role, team_id, avatar, status, auth_version) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, 'active', 1)`, [userId, name, email, phone, await hashPassword(password), legacyRole, tenantId, name.slice(0, 2).toUpperCase()]);
           if (payload.mustChangePassword === true) await connection.query(`UPDATE users SET must_change_password = TRUE WHERE id = ?`, [userId]);
           await connection.query(`INSERT INTO tenant_memberships (id, tenant_id, user_id, status, primary_org_unit_id, membership_auth_version, joined_at, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, 1, NOW(3), NOW(3), NOW(3))`, [membershipId, tenantId, userId, root?.id || null]);
           if (root?.id) await connection.query(`INSERT INTO organization_memberships (id, tenant_id, membership_id, org_unit_id, relation_type, created_by, created_at) VALUES (?, ?, ?, ?, 'primary', ?, NOW(3))`, [id("om"), tenantId, membershipId, root.id, actor.id]);
           await connection.query(`INSERT INTO member_role_assignments (id, tenant_id, membership_id, role_id, status, reason, granted_by, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?, NOW(3))`, [id("mra"), tenantId, membershipId, roleId, String(payload.reason || "新增成员"), actor.id]);
-          affected.push(membershipId); targetType = "membership"; targetId = membershipId; after = { userId, membershipId, name, email, roleId };
+          affected.push(membershipId); targetType = "membership"; targetId = membershipId; after = { userId, membershipId, name, phone, roleId };
         } else if (operation === "member.update") {
           const userId = String(payload.userId || "");
           const membership = one<any>((await connection.query(`SELECT tm.*, u.status AS user_status FROM tenant_memberships tm JOIN users u ON u.id = tm.user_id WHERE tm.tenant_id = ? AND tm.user_id = ? LIMIT 1`, [tenantId, userId]))[0]);
           if (!membership) throw Object.assign(new Error("成员不存在或不属于当前公司"), { status: 404 });
+          const phone = payload.phone === undefined ? undefined : normalizeMainlandPhone(payload.phone);
+          if (payload.phone !== undefined && !phone) throw Object.assign(new Error("请输入正确的中国大陆手机号"), { status: 400 });
+          if (phone && one<any>((await connection.query(`SELECT id FROM users WHERE phone = ? AND id <> ? LIMIT 1`, [phone, userId]))[0])) {
+            throw Object.assign(new Error("该手机号已开户"), { status: 409 });
+          }
           before = { status: membership.status, primaryOrgUnitId: membership.primary_org_unit_id };
           const status = payload.status === undefined ? membership.status : (payload.status === "active" ? "active" : "suspended");
           const orgUnitId = payload.organizationUnitId === undefined ? membership.primary_org_unit_id : String(payload.organizationUnitId || "");
@@ -333,8 +341,9 @@ export function createIamManagementService(pool: mysql.Pool): IamManagementServi
               ON DUPLICATE KEY UPDATE valid_from = NOW(3), valid_until = NULL, created_by = VALUES(created_by)`,
             [id("om"), tenantId, membership.id, orgUnitId, actor.id]);
           }
+          if (phone !== undefined) await connection.query(`UPDATE users SET phone = ? WHERE id = ?`, [phone, userId]);
           await connection.query(`UPDATE users SET status = ?, auth_version = auth_version + 1 WHERE id = ? AND team_id = ?`, [status === "active" ? "active" : "disabled", userId, tenantId]);
-          affected.push(membership.id); targetType = "membership"; targetId = membership.id; after = { status, primaryOrgUnitId: orgUnitId };
+          affected.push(membership.id); targetType = "membership"; targetId = membership.id; after = { status, primaryOrgUnitId: orgUnitId, ...(phone !== undefined ? { phone } : {}) };
         } else if (operation === "organization.create") {
           const name = String(payload.name || "").trim(); const code = String(payload.code || name).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-"); const parentId = String(payload.parentId || "");
           if (!name || !code) throw Object.assign(new Error("组织名称和编码不能为空"), { status: 400 });

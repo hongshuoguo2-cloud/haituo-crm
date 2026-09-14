@@ -61,6 +61,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: Role;
   iamRoleNames?: string[];
   iamSource?: "iam" | "legacy_compatibility" | "platform";
@@ -145,6 +146,7 @@ interface AccessControlOverview {
     membershipId?: string;
     name: string;
     email: string;
+    phone?: string;
     avatar: string;
     status: "active" | "disabled";
     roleId: string;
@@ -192,6 +194,7 @@ interface PlatformTenant {
   activeMemberCount: number;
   administratorName: string;
   administratorEmail: string;
+  administratorPhone: string;
   authorizationRevision: number;
   trialExpiresAt: string;
   createdAt: string;
@@ -5961,7 +5964,7 @@ function openMfaChallenge(email: string, challengeId: string) {
 }
 
 function openInitialPasswordChange(changeToken: string, email: string) {
-  openModal("设置你的登录密码", `<p>这是临时密码登录。请先设置自己的密码，再进入海拓。</p><div class="form-grid">
+  openModal("设置你的登录密码", `<p>这是初始密码登录。请先设置自己的密码，再进入海拓。</p><div class="form-grid">
     <div class="form-field full"><label for="haituoNewPassword">新密码（12～128 位）</label><input id="haituoNewPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password"></div>
     <div class="form-field full"><label for="haituoConfirmPassword">再次输入新密码</label><input id="haituoConfirmPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password"></div>
     </div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="haituoSavePassword">设置密码并登录</button>`);
@@ -6193,10 +6196,10 @@ function renderProfile(user = state.user) {
     : allScopes.includes("tenant") ? "公司范围" : allScopes.includes("org_subtree") || allScopes.includes("org_unit") ? "组织范围" : "本人业务";
   qs<HTMLElement>("#profileRoleMetric")!.textContent = effectiveRoleName;
   qs<HTMLElement>("#profileMailMetric")!.textContent = mailReady && user.smtpHost && user.hasSmtpPassword ? "可真实发信" : mailReady ? "待配SMTP" : "未绑定";
-  qs<HTMLElement>("#profileLoginEmailText")!.textContent = user.email;
+  qs<HTMLElement>("#profileLoginEmailText")!.textContent = user.phone || user.email;
   qs<HTMLElement>("#profileIdText")!.textContent = user.id;
   qs<HTMLElement>("#profileScopeText")!.textContent = roleScopeText(user);
-  setFieldValue("#profileLoginEmail", user.email);
+  setFieldValue("#profileLoginEmail", user.phone || user.email);
   setFieldValue("#profileOutboundEmail", user.outboundEmail || "");
   setFieldValue("#profileSenderName", user.emailSenderName || "");
   setFieldValue("#profileEmailSignature", user.emailSignature || "");
@@ -6601,9 +6604,9 @@ function platformMetric(label: string, value: number) {
 }
 
 function platformTenantRows(items = platformTenants.slice(0, 12)) {
-  return items.map((tenant) => `<tr>
+  return items.map((tenant) => { const administratorLogin = tenant.administratorPhone || tenant.administratorEmail; return `<tr>
     <td><div class="platform-cell-main"><b>${escapeHtml(tenant.name)}</b><small>${escapeHtml(tenant.code)} · ${escapeHtml(tenant.id)}</small></div></td>
-    <td><div class="platform-cell-main"><b>${escapeHtml(tenant.administratorEmail || "尚未设置")}</b><small>${escapeHtml(tenant.administratorName || "公司管理员")}</small></div>${tenant.administratorEmail ? `<button class="platform-command" type="button" data-platform-copy-admin="${escapeHtml(tenant.administratorEmail)}">复制账号</button>` : ""}</td>
+    <td><div class="platform-cell-main"><b>${escapeHtml(administratorLogin || "尚未设置")}</b><small>${escapeHtml(tenant.administratorName || "公司管理员")}</small></div>${administratorLogin ? `<button class="platform-command" type="button" data-platform-copy-admin="${escapeHtml(administratorLogin)}">复制账号</button>` : ""}</td>
     <td><span class="platform-status ${escapeHtml(tenant.status)}">${escapeHtml(platformStatusLabel(tenant.status))}</span></td>
     <td>${escapeHtml(tenant.planCode)}</td><td>${tenant.activeMemberCount} / ${tenant.seatLimit}</td>
     <td>${tenant.authorizationRevision}</td><td>${escapeHtml(formatTime(tenant.createdAt))}</td>
@@ -6611,7 +6614,7 @@ function platformTenantRows(items = platformTenants.slice(0, 12)) {
       ? `<button class="platform-command primary" type="button" data-platform-bootstrap-admin data-tenant-id="${escapeHtml(tenant.id)}">设置管理员</button>` : ""}${tenant.status === "suspended"
       ? `<button class="platform-command" type="button" data-platform-tenant-action="restore" data-tenant-id="${escapeHtml(tenant.id)}">恢复</button>`
       : tenant.status !== "closed" ? `<button class="platform-command danger" type="button" data-platform-tenant-action="suspend" data-tenant-id="${escapeHtml(tenant.id)}">暂停</button>` : ""}</div></td>
-  </tr>`).join("");
+  </tr>`; }).join("");
 }
 
 function renderPlatformOverview() {
@@ -19446,15 +19449,19 @@ function openAccessControlMemberEditor(overview: AccessControlOverview, memberId
   const member = overview.members.find((item) => item.id === memberId);
   if (!member) return;
   const options = overview.organizationUnits.filter((unit) => unit.type !== "unassigned" && unit.status !== "disabled").map((unit) => `<option value="${escapeHtml(unit.id)}" ${unit.id === member.organizationUnitId ? "selected" : ""}>${escapeHtml(unit.name)}</option>`).join("");
-  openModal("编辑成员", `<div class="form-grid"><div class="form-field full"><label>成员</label><input value="${escapeHtml(member.name)} · ${escapeHtml(member.email)}" disabled></div><div class="form-field"><label>成员状态</label><select id="iamMemberStatus"><option value="active" ${member.status === "active" ? "selected" : ""}>启用</option><option value="suspended" ${member.status !== "active" ? "selected" : ""}>停用</option></select></div><div class="form-field"><label>所属组织</label><select id="iamMemberOrg">${options}</select></div></div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveIamMember">保存</button>`);
-  qs("#saveIamMember")?.addEventListener("click", () => void mutateAccessControl(() => api(`/api/v1/members/${encodeURIComponent(member.id)}`, { method: "PATCH", body: JSON.stringify({ ...accessControlTenantBody(overview), status: qs<HTMLSelectElement>("#iamMemberStatus")?.value, organizationUnitId: qs<HTMLSelectElement>("#iamMemberOrg")?.value, reason: "成员目录调整" }) }), "成员设置已更新"));
+  openModal("编辑成员", `<div class="form-grid"><div class="form-field full"><label>成员</label><input value="${escapeHtml(member.name)}" disabled></div><div class="form-field full"><label>登录手机号</label><input id="iamMemberPhone" type="tel" inputmode="numeric" maxlength="24" value="${escapeHtml(member.phone || "")}" placeholder="请输入使用者本人的手机号"><small>${member.phone ? "修改后请使用新手机号登录。" : "这是旧账号，填写手机号后即可改用手机号登录。"}</small></div><div class="form-field"><label>成员状态</label><select id="iamMemberStatus"><option value="active" ${member.status === "active" ? "selected" : ""}>启用</option><option value="suspended" ${member.status !== "active" ? "selected" : ""}>停用</option></select></div><div class="form-field"><label>所属组织</label><select id="iamMemberOrg">${options}</select></div></div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveIamMember">保存</button>`);
+  qs("#saveIamMember")?.addEventListener("click", () => {
+    const phone = qs<HTMLInputElement>("#iamMemberPhone")?.value.trim() || "";
+    if (!/^(?:(?:\+|00)86)?1[3-9]\d{9}$/u.test(phone.replace(/[\s()-]/gu, ""))) { toast("请输入正确的中国大陆手机号", "error"); return; }
+    void mutateAccessControl(() => api(`/api/v1/members/${encodeURIComponent(member.id)}`, { method: "PATCH", body: JSON.stringify({ ...accessControlTenantBody(overview), phone, status: qs<HTMLSelectElement>("#iamMemberStatus")?.value, organizationUnitId: qs<HTMLSelectElement>("#iamMemberOrg")?.value, reason: "成员目录调整" }) }), "成员设置已更新");
+  });
 }
 
-interface HaituoCredentials { email: string; password: string }
+interface HaituoCredentials { phone: string; password: string }
 
 function showHaituoCredentials(credentials: HaituoCredentials) {
-  const info = `海拓登录信息\n网址：${location.origin}/\n账号：${credentials.email}\n临时密码：${credentials.password}\n首次登录请设置自己的密码。`;
-  openModal("开户成功", `<p>请复制并私下发给使用者。临时密码仅在此处展示，关闭后无法查看。</p>
+  const info = `海拓登录信息\n网址：${location.origin}/\n手机号：${credentials.phone}\n初始密码：${credentials.password}\n首次登录请设置自己的密码。`;
+  openModal("开户成功", `<p>请复制并私下发给使用者。初始密码仅在此处展示，关闭后无法查看。</p>
     <div class="form-field full"><label for="haituoAccountInfo">登录信息</label><textarea id="haituoAccountInfo" readonly rows="6" spellcheck="false">${escapeHtml(info)}</textarea></div>`,
     `<button class="btn" data-modal-close>关闭</button><button class="btn primary" id="haituoCopyAccount">复制登录信息</button>`);
   qs("#haituoCopyAccount")?.addEventListener("click", () => void (async () => {
@@ -19467,33 +19474,32 @@ function showHaituoCredentials(credentials: HaituoCredentials) {
   };
 }
 
-function openHaituoAccountCreator(options: { roles?: AccessControlOverview["roles"]; submit: (input: { name: string; email?: string; roleId?: string }) => Promise<{ credentials: HaituoCredentials }>; refresh: () => Promise<void> }) {
+function openHaituoAccountCreator(options: { roles?: AccessControlOverview["roles"]; submit: (input: { name: string; phone: string; roleId?: string }) => Promise<{ credentials: HaituoCredentials }>; refresh: () => Promise<void> }) {
   const roles = options.roles?.filter((role) => role.status !== "disabled") || [];
   const defaultRole = roles.find((role) => ["legacy_sales", "sales_rep", "sales"].includes(role.code))?.id;
-  openModal(options.roles ? "一键开户" : "开通公司管理员", `<div class="form-grid">
+  openModal(options.roles ? "手机号开户" : "开通公司管理员", `<div class="form-grid">
     <div class="form-field full"><label for="iamNewMemberName">使用者姓名</label><input id="iamNewMemberName" maxlength="100" placeholder="例如：张三" autocomplete="off"></div>
-    <div class="form-field full"><label for="iamNewMemberEmail">登录账号（选填）</label><input id="iamNewMemberEmail" type="email" maxlength="180" placeholder="留空自动生成，也可填写邮箱" autocomplete="off"><small>自动生成的账号仅用于登录，不是收件邮箱。</small></div>
+    <div class="form-field full"><label for="iamNewMemberPhone">登录手机号</label><input id="iamNewMemberPhone" type="tel" inputmode="numeric" maxlength="24" placeholder="请输入使用者本人的手机号" autocomplete="off"><small>该手机号将作为登录账号，每个手机号只能开通一次。</small></div>
     ${options.roles ? `<div class="form-field full"><label for="iamNewMemberRole">角色</label><select id="iamNewMemberRole">${roles.map((role) => `<option value="${escapeHtml(role.id)}" ${role.id === defaultRole ? "selected" : ""}>${escapeHtml(role.name)}</option>`).join("")}</select></div>` : ""}
-    <p class="form-field full">临时密码自动生成，开户后可复制登录信息发给使用者。</p>
-  </div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveIamNewMember">生成账号和密码</button>`);
+    <p class="form-field full">初始密码自动生成，开户后可复制登录信息发给使用者。</p>
+  </div>`, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveIamNewMember">开户并生成初始密码</button>`);
   qs<HTMLInputElement>("#iamNewMemberName")?.focus();
   const button = qs<HTMLButtonElement>("#saveIamNewMember")!;
   button.addEventListener("click", () => void (async () => {
     const name = qs<HTMLInputElement>("#iamNewMemberName")?.value.trim() || "";
-    const emailField = qs<HTMLInputElement>("#iamNewMemberEmail");
-    const email = emailField?.value.trim() || undefined;
+    const phone = qs<HTMLInputElement>("#iamNewMemberPhone")?.value.trim() || "";
     if (!name) { toast("请填写使用者姓名", "error"); return; }
-    if (email && !emailField?.reportValidity()) return;
+    if (!/^(?:(?:\+|00)86)?1[3-9]\d{9}$/u.test(phone.replace(/[\s()-]/gu, ""))) { toast("请输入正确的中国大陆手机号", "error"); return; }
     const roleId = qs<HTMLSelectElement>("#iamNewMemberRole")?.value;
     if (options.roles && !roleId) { toast("请先配置可用角色", "error"); return; }
     button.disabled = true; button.textContent = "正在开户…";
     try {
-      const result = await options.submit({ name, email, roleId });
+      const result = await options.submit({ name, phone, roleId });
       showHaituoCredentials(result.credentials);
       void options.refresh().catch(() => toast("账号已创建，列表刷新失败，请手动刷新", "error"));
     } catch (error) {
       toast(error instanceof Error ? error.message : "开户失败", "error");
-      button.disabled = false; button.textContent = "生成账号和密码";
+      button.disabled = false; button.textContent = "开户并生成初始密码";
     }
   })());
 }
@@ -19536,7 +19542,7 @@ function renderAccessControlCompanyPicker(overview: AccessControlOverview) {
 
 function accessControlMemberRows(members: AccessControlOverview["members"]) {
   return members.map((member) => `<tr data-ac-member-open="${escapeHtml(member.id)}" data-ac-search-row="${escapeHtml(`${member.name} ${member.email} ${member.roleName} ${member.organizationUnitName}`.toLowerCase())}">
-    <td><div class="ac-member-cell"><span class="ac-avatar">${escapeHtml(member.avatar || member.name.slice(0, 2))}</span><span class="ac-member-copy"><b>${escapeHtml(member.name)}</b><small>${escapeHtml(member.email)}</small></span></div></td>
+    <td><div class="ac-member-cell"><span class="ac-avatar">${escapeHtml(member.avatar || member.name.slice(0, 2))}</span><span class="ac-member-copy"><b>${escapeHtml(member.name)}</b><small>${escapeHtml(member.phone || member.email)}</small></span></div></td>
     <td><span class="ac-role-chip ${member.roleCode}">${escapeHtml(member.roleName)}</span></td>
     <td>${escapeHtml(member.organizationUnitName)}</td>
     <td><span class="ac-status-chip ${member.status}">${member.status === "active" ? "启用" : "停用"}</span></td>
@@ -19581,7 +19587,7 @@ function renderAccessControlMemberManagement(overview: AccessControlOverview) {
   return `<div class="ac-workbench">
     <section class="ac-pane">
       <div class="ac-pane-head"><div class="ac-pane-title"><h2>公司成员</h2><span>共 ${overview.members.length} 位</span></div><label class="ac-search"><input id="accessControlOrganizationSearch" placeholder="搜索姓名、邮箱或角色" autocomplete="off"></label></div>
-      <div class="ac-member-table-wrap"><table class="ac-member-table ac-member-directory-table"><thead><tr><th>成员</th><th>当前角色</th><th>所属组织</th><th>状态</th><th>操作</th></tr></thead><tbody id="accessControlOrganizationRows">${overview.members.map((member) => `<tr data-ac-search-row="${escapeHtml(`${member.name} ${member.email} ${member.roleName}`.toLowerCase())}"><td><div class="ac-member-cell"><span class="ac-avatar">${escapeHtml(member.avatar || member.name.slice(0, 2))}</span><span class="ac-member-copy"><b>${escapeHtml(member.name)}</b><small>${escapeHtml(member.email)}${member.employeeNo ? ` · ${escapeHtml(member.employeeNo)}` : ""}</small></span></div></td><td><span class="ac-role-chip ${member.roleCode}">${escapeHtml(member.roleName)}</span></td><td><span class="ac-cell-main">${escapeHtml(member.organizationUnitName)}</span></td><td><span class="ac-status-chip ${member.status}">${member.status === "active" ? "启用" : "停用"}</span></td><td><div class="ac-row-actions"><button class="btn" type="button" data-ac-member-edit="${escapeHtml(member.id)}">编辑资料</button><button class="btn" type="button" data-ac-member-open="${escapeHtml(member.id)}">分配权限</button></div></td></tr>`).join("") || `<tr><td colspan="5"><div class="ac-table-empty">暂无成员</div></td></tr>`}</tbody></table></div>
+      <div class="ac-member-table-wrap"><table class="ac-member-table ac-member-directory-table"><thead><tr><th>成员</th><th>当前角色</th><th>所属组织</th><th>状态</th><th>操作</th></tr></thead><tbody id="accessControlOrganizationRows">${overview.members.map((member) => `<tr data-ac-search-row="${escapeHtml(`${member.name} ${member.phone || member.email} ${member.roleName}`.toLowerCase())}"><td><div class="ac-member-cell"><span class="ac-avatar">${escapeHtml(member.avatar || member.name.slice(0, 2))}</span><span class="ac-member-copy"><b>${escapeHtml(member.name)}</b><small>${escapeHtml(member.phone || member.email)}${member.employeeNo ? ` · ${escapeHtml(member.employeeNo)}` : ""}</small></span></div></td><td><span class="ac-role-chip ${member.roleCode}">${escapeHtml(member.roleName)}</span></td><td><span class="ac-cell-main">${escapeHtml(member.organizationUnitName)}</span></td><td><span class="ac-status-chip ${member.status}">${member.status === "active" ? "启用" : "停用"}</span></td><td><div class="ac-row-actions"><button class="btn" type="button" data-ac-member-edit="${escapeHtml(member.id)}">编辑资料</button><button class="btn" type="button" data-ac-member-open="${escapeHtml(member.id)}">分配权限</button></div></td></tr>`).join("") || `<tr><td colspan="5"><div class="ac-table-empty">暂无成员</div></td></tr>`}</tbody></table></div>
     </section>
   </div>`;
 }
@@ -19669,7 +19675,7 @@ function renderAccessControlMembers(overview: AccessControlOverview) {
       ${overview.members.map((member) => `<button class="ac-member-item ${member.id === selected?.id ? "active" : ""}" type="button" data-ac-member="${escapeHtml(member.id)}" data-ac-search-row="${escapeHtml(`${member.name} ${member.email} ${member.roleName}`.toLowerCase())}"><span class="ac-avatar">${escapeHtml(member.avatar || member.name.slice(0, 2))}</span><span class="ac-member-copy"><b>${escapeHtml(member.name)}</b><small>${escapeHtml(member.roleName)} · ${escapeHtml(member.organizationUnitName)}</small></span><span class="ac-status-chip ${member.status}">${member.status === "active" ? "启用" : "停用"}</span></button>`).join("") || `<div class="ac-empty"><p>暂无成员</p></div>`}
     </div></aside>
     <section class="ac-pane">${selected ? `<div class="ac-member-detail">
-      <div class="ac-member-detail-head"><div class="ac-member-detail-person"><span class="ac-avatar">${escapeHtml(selected.avatar || selected.name.slice(0, 2))}</span><div><h2>${escapeHtml(selected.name)}</h2><p>${escapeHtml(selected.email)}</p></div></div><span class="ac-role-chip ${selected.roleCode}">${escapeHtml(selected.roleName)}</span></div>
+      <div class="ac-member-detail-head"><div class="ac-member-detail-person"><span class="ac-avatar">${escapeHtml(selected.avatar || selected.name.slice(0, 2))}</span><div><h2>${escapeHtml(selected.name)}</h2><p>${escapeHtml(selected.phone || selected.email)}</p></div></div><span class="ac-role-chip ${selected.roleCode}">${escapeHtml(selected.roleName)}</span></div>
       <section class="ac-detail-section"><div class="ac-section-head"><div><h3>授权关系</h3><span>角色决定成员的基础权限</span></div><button class="btn primary" type="button" data-ac-member-role-save="${escapeHtml(selected.membershipId || selected.id)}">保存角色</button></div>
       <div class="ac-assignment-chain"><div class="ac-chain-node"><span>公司</span><b>${escapeHtml(overview.company?.name || "-")}</b></div><div class="ac-chain-node"><span>所属组织</span><b>${escapeHtml(selected.organizationUnitName)}</b></div><div class="ac-chain-node ac-chain-role"><span>已分配角色</span><div class="ac-role-checks" id="iamMemberRoleIds">${overview.roles.filter((item) => item.status !== "disabled").map((item) => `<label><input type="checkbox" value="${escapeHtml(item.id)}" ${selectedRoleIds.includes(item.id) ? "checked" : ""}><span>${escapeHtml(item.name)}</span></label>`).join("")}</div></div></div></section>
       <section class="ac-detail-section"><div class="ac-section-head"><div><h3>有效权限</h3><span>角色与临时授权合并后共 ${effective.length} 项</span></div></div>
@@ -19882,7 +19888,7 @@ function renderAccessControl() {
             ? renderAccessControlAudit(overview)
             : renderAccessControlMemberManagement(overview);
   root.innerHTML = `<div class="ac-shell">
-    <header class="ac-page-head"><div class="ac-title"><div class="ac-title-line"><h1>${pageTitle[page]}</h1><span class="ac-boundary-state">公司级隔离</span></div><p>${overview.company ? `当前公司：${escapeHtml(overview.company.name)}` : "平台公司目录"}</p></div><div class="ac-head-actions">${accessControlCompanyOptions(overview)}<button class="btn" type="button" data-ac-refresh>刷新</button>${page === "members" ? `<button class="btn primary" type="button" data-ac-add-member data-permission="member.manage" ${overview.company ? "" : "disabled"}>一键开户</button>` : ""}</div></header>
+    <header class="ac-page-head"><div class="ac-title"><div class="ac-title-line"><h1>${pageTitle[page]}</h1><span class="ac-boundary-state">公司级隔离</span></div><p>${overview.company ? `当前公司：${escapeHtml(overview.company.name)}` : "平台公司目录"}</p></div><div class="ac-head-actions">${accessControlCompanyOptions(overview)}<button class="btn" type="button" data-ac-refresh>刷新</button>${page === "members" ? `<button class="btn primary" type="button" data-ac-add-member data-permission="member.manage" ${overview.company ? "" : "disabled"}>手机号开户</button>` : ""}</div></header>
     <div class="ac-tab-panel">${body}</div>
     <button class="ac-guide-fab" type="button" data-ac-guide aria-label="权限使用说明" title="权限使用说明">?</button>
   </div>`;
@@ -19918,7 +19924,7 @@ async function renderAccounts(user: User) {
     const canManageAccount = canManageRoleInUi(account);
     const disableAllowed = canManageAccount && !isDisabled;
     const disableLabel = account.id === user.id ? "当前账号" : isDisabled ? "已停用" : disableAllowed ? "停用" : "受保护";
-    return `<tr data-account-id="${escapeHtml(account.id)}"><td><div class="company"><span class="avatar">${escapeHtml(account.avatar)}</span><div><b>${escapeHtml(account.name)}</b><span>${escapeHtml(account.email)}</span></div></div></td><td>${badge(roleLabel[account.role], account.role === "super_admin" ? "red" : account.role === "admin" ? "amber" : account.role === "manager" ? "green" : "")}</td><td>${accountBusinessScope(account.role)}</td><td>${accountPersonalScope(account.role)}</td><td>${badge(status, isDisabled ? "gray" : "green")}</td><td><div class="inline-actions"><button class="btn" data-password-account ${canManageAccount ? "" : "disabled"}>设密码</button><button class="btn" data-disable-account ${disableAllowed ? "" : "disabled"}>${disableLabel}</button><button class="btn danger" data-delete-account ${canManageAccount ? "" : "disabled"}>删除</button></div></td></tr>`;
+    return `<tr data-account-id="${escapeHtml(account.id)}"><td><div class="company"><span class="avatar">${escapeHtml(account.avatar)}</span><div><b>${escapeHtml(account.name)}</b><span>${escapeHtml(account.phone || account.email)}</span></div></div></td><td>${badge(roleLabel[account.role], account.role === "super_admin" ? "red" : account.role === "admin" ? "amber" : account.role === "manager" ? "green" : "")}</td><td>${accountBusinessScope(account.role)}</td><td>${accountPersonalScope(account.role)}</td><td>${badge(status, isDisabled ? "gray" : "green")}</td><td><div class="inline-actions"><button class="btn" data-password-account ${canManageAccount ? "" : "disabled"}>设密码</button><button class="btn" data-disable-account ${disableAllowed ? "" : "disabled"}>${disableLabel}</button><button class="btn danger" data-delete-account ${canManageAccount ? "" : "disabled"}>删除</button></div></td></tr>`;
   }).join("");
   qsa<HTMLButtonElement>("[data-password-account]", tbody).forEach((button) => {
     button.addEventListener("click", () => openPasswordModal(button.closest<HTMLElement>("tr")?.dataset.accountId || ""));
@@ -19989,7 +19995,7 @@ function openAccountModal() {
       <div class="form-field"><label>姓名</label><input id="accountNameInput" placeholder="请输入成员姓名" autocomplete="off"></div>
       <div class="form-field"><label>角色</label><select id="accountRoleInput">${roleOptions}</select></div>
       ${teamField}
-      <div class="form-field full"><label>邮箱</label><input id="accountEmailInput" type="email" placeholder="请输入登录邮箱" autocomplete="off"></div>
+      <div class="form-field full"><label>登录手机号</label><input id="accountPhoneInput" type="tel" inputmode="numeric" placeholder="请输入使用者手机号" autocomplete="off"></div>
       <div class="form-field full"><label>初始密码</label><input id="accountPasswordInput" type="password" placeholder="至少 8 位" autocomplete="new-password"></div>
     </div>
   `, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="saveAccountButton">保存账号</button>`);
@@ -20002,12 +20008,12 @@ async function saveAccount() {
     return;
   }
   const name = qs<HTMLInputElement>("#accountNameInput")?.value.trim() || "";
-  const email = qs<HTMLInputElement>("#accountEmailInput")?.value.trim() || "";
+  const phone = qs<HTMLInputElement>("#accountPhoneInput")?.value.trim() || "";
   const password = qs<HTMLInputElement>("#accountPasswordInput")?.value || "";
   const role = qs<HTMLSelectElement>("#accountRoleInput")?.value || "sales";
   const teamId = qs<HTMLInputElement>("#accountTeamInput")?.value.trim() || "";
-  if (!name || !email || password.length < 8) {
-    toast("请填写账号姓名、邮箱和至少 8 位密码", "error");
+  if (!name || !/^(?:(?:\+|00)86)?1[3-9]\d{9}$/u.test(phone.replace(/[\s()-]/gu, "")) || password.length < 8) {
+    toast("请填写账号姓名、正确手机号和至少 8 位密码", "error");
     return;
   }
   if (state.user.role === "super_admin" && role !== "super_admin" && !teamId) {
@@ -20018,7 +20024,7 @@ async function saveAccount() {
     method: "POST",
     body: JSON.stringify({
       name,
-      email,
+      phone,
       password,
       role,
       teamId: role === "super_admin" ? "all" : teamId || state.user.teamId
@@ -20045,7 +20051,7 @@ function openPasswordModal(id: string) {
   }
   openModal("设置账号密码", `
     <div class="form-grid">
-      <div class="form-field full"><label>账号</label><input value="${escapeHtml(account.email)}" disabled></div>
+      <div class="form-field full"><label>账号</label><input value="${escapeHtml(account.phone || account.email)}" disabled></div>
       <div class="form-field full"><label>新密码</label><input id="accountNewPasswordInput" type="password" value="" autocomplete="new-password" placeholder="至少 8 位"></div>
     </div>
   `, `<button class="btn" data-modal-close>取消</button><button class="btn primary" id="savePasswordButton">保存密码</button>`);

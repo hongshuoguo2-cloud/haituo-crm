@@ -291,6 +291,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   password: string;
   role: Role;
   teamId: string;
@@ -331,6 +332,7 @@ export interface SessionUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: Role;
   iamPermissions?: Record<string, Array<"self" | "org_unit" | "org_subtree" | "tenant" | "public_pool">>;
   iamRoleNames?: string[];
