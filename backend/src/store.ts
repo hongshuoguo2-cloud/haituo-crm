@@ -188,6 +188,7 @@ import type {
 import type { CompanyProfile, DocumentDefaultProfile, DocumentLetterhead, DocumentSignature, DocumentStamp, LogEntry, Product, Shipment, TeamSystemSettings } from "./types.js";
 import type { IamCapabilitySnapshot } from "./iam/iam-capabilities.js";
 import { buildLegacyCapabilitySnapshot } from "./iam/iam-capabilities.js";
+import { randomUUID } from "node:crypto";
 import type { IamManagementService } from "./iam/iam-management-service.js";
 import type { PlatformOperationsService } from "./iam/platform-operations-service.js";
 import type { PlatformMfaService } from "./iam/platform-mfa.js";
@@ -413,6 +414,7 @@ export interface CrmStore {
   approvalOperations?: ApprovalService;
   reloadIamUsers?(): Promise<void>;
   changeInitialPassword?(userId: string, authVersion: number, passwordHash: string): Promise<boolean>;
+  registerPersonalAccount?(input: { name: string; phone: string; password: string }): Promise<{ userId: string }>;
   close?(): Promise<void>;
 }
 
@@ -564,6 +566,26 @@ export const memoryStore: CrmStore = {
   commissionCalculations,
   commissionItems,
   commissionExports,
+  async registerPersonalAccount(input) {
+    if (users.some((item) => item.phone === input.phone)) {
+      throw Object.assign(new Error("该手机号已经注册，请直接登录"), { status: 409 });
+    }
+    const userId = `user_${randomUUID().replaceAll("-", "").slice(0, 40)}`;
+    users.push({
+      id: userId,
+      name: input.name,
+      email: `phone_${input.phone}@accounts.haituo.local`,
+      phone: input.phone,
+      accountMode: "personal",
+      password: input.password,
+      role: "admin",
+      teamId: `personal_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+      avatar: input.name.slice(0, 2).toUpperCase(),
+      status: "active",
+      authVersion: 1
+    });
+    return { userId };
+  },
   async persist() {
     // Memory mode intentionally keeps current in-process state only.
   },

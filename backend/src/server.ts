@@ -549,6 +549,14 @@ const loginLimiter = rateLimit({
   message: { message: "登录尝试过于频繁，请稍后再试" }
 });
 
+const registrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: ["test", "e2e"].includes(process.env.NODE_ENV || "") ? 10_000 : 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "注册次数过于频繁，请稍后再试" }
+});
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: ["test", "e2e"].includes(process.env.NODE_ENV || "") ? 100_000 : 600,
@@ -2601,6 +2609,12 @@ const loginSchema = z.object({
   password: z.string().min(1).max(128)
 });
 
+const personalRegistrationSchema = z.object({
+  name: z.string().trim().min(2, "请输入至少 2 个字的称呼").max(40),
+  phone: z.string().trim().min(1).max(32),
+  password: z.string().min(8, "密码至少需要 8 位").max(128)
+});
+
 function sendLoginSession(res: Response, sessionUser: SessionUser, mfaVerified = false) {
   const token = signToken(sessionUser, { mfaVerified });
   const csrfToken = createCsrfToken();
@@ -2616,6 +2630,21 @@ function mfaSetupActor(token: string) {
   const user = getStore().users.find((item) => item.id === claims.userId && item.status === "active" && Number(item.authVersion || 1) === claims.authVersion);
   return user ? publicUser(user) : null;
 }
+
+app.post("/api/auth/register", registrationLimiter, asyncRoute(async (req, res) => {
+  const body = personalRegistrationSchema.parse(req.body);
+  const phone = normalizeMainlandPhone(body.phone);
+  if (!phone) { res.status(400).json({ message: "请输入正确的中国大陆手机号" }); return; }
+  const store = getStore();
+  if (!store.registerPersonalAccount) { res.status(503).json({ message: "自主注册服务暂不可用" }); return; }
+  const result = await store.registerPersonalAccount({ name: body.name, phone, password: body.password });
+  const user = store.users.find((item) => item.id === result.userId && item.status === "active");
+  if (!user) { res.status(503).json({ message: "工作区已经创建，请直接登录" }); return; }
+  const sessionUser = publicUser(user);
+  const validSession = await store.validateIamSession?.(sessionUser);
+  if (validSession && !validSession.valid) { res.status(503).json({ message: "个人工作区初始化失败，请稍后重试" }); return; }
+  sendLoginSession(res, sessionUser);
+}));
 
 app.post("/api/auth/login", loginLimiter, asyncRoute(async (req, res) => {
   const body = loginSchema.parse(req.body);

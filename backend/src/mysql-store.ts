@@ -1643,6 +1643,11 @@ export async function createMysqlStore(
       await store.reloadIamUsers!();
       return true;
     },
+    registerPersonalAccount: async (input) => {
+      const result = await store.platformOperations!.registerPersonalAccount(input);
+      await store.reloadIamUsers!();
+      return result;
+    },
     users: await loadUsers(pool),
     companyProfiles: await loadCompanyProfiles(pool),
     documentLetterheads: await loadDocumentLetterheads(pool),
@@ -2211,6 +2216,7 @@ async function ensureSchema(pool: mysql.Pool) {
     name VARCHAR(100) NOT NULL,
     email VARCHAR(180) NOT NULL UNIQUE,
     phone VARCHAR(32) NULL,
+    account_mode VARCHAR(20) NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL,
     team_id VARCHAR(64) NOT NULL,
@@ -2234,6 +2240,7 @@ async function ensureSchema(pool: mysql.Pool) {
   await pool.query("ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL");
   await pool.query("ALTER TABLE users MODIFY status VARCHAR(20) NOT NULL DEFAULT 'active'");
   await ensureColumn(pool, "users", "phone", "VARCHAR(32) NULL");
+  await ensureColumn(pool, "users", "account_mode", "VARCHAR(20) NULL");
   await ensureUniqueIndex(pool, "users", "uk_users_phone", ["phone"]);
   await ensureColumn(pool, "users", "outbound_email", "VARCHAR(180) DEFAULT ''");
   await ensureColumn(pool, "users", "email_sender_name", "VARCHAR(120) DEFAULT ''");
@@ -5998,6 +6005,7 @@ async function loadUsers(pool: mysql.Pool): Promise<User[]> {
     name: row.name,
     email: row.email,
     phone: row.phone || "",
+    accountMode: row.account_mode === "personal" ? "personal" : undefined,
     password: row.password_hash,
     role: row.role,
     teamId: row.team_id,

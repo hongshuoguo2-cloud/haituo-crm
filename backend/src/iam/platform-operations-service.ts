@@ -16,6 +16,7 @@ const SUPPORT_READ_PERMISSIONS = new Set([
 ]);
 
 export interface PlatformOperationsService {
+  registerPersonalAccount(input: { name: string; phone: string; password: string }): Promise<{ userId: string }>;
   getOverview(actor: SessionUser): Promise<Record<string, unknown>>;
   listTenants(actor: SessionUser): Promise<Record<string, unknown>>;
   createTenant(actor: SessionUser, input: Record<string, unknown>, context?: AuditContext): Promise<Record<string, unknown>>;
@@ -31,6 +32,36 @@ export interface PlatformOperationsService {
   getHealth(actor: SessionUser): Promise<Record<string, unknown>>;
   listAudit(actor: SessionUser, limit?: number): Promise<Record<string, unknown>>;
   authorizeAiPoolManage(actor: SessionUser): Promise<void>;
+}
+
+async function seedPersonalOwnerRole(
+  connection: mysql.PoolConnection,
+  tenantId: string,
+  creatorId: string
+) {
+  const roleId = id("role");
+  await connection.query(
+    `INSERT INTO roles
+      (id, tenant_id, name, code, description, source, status, is_protected,
+       version_no, created_by, updated_by, created_at, updated_at)
+     VALUES (?, ?, '个人使用者', 'personal_owner', '个人工作区全部功能', 'template', 'active', TRUE, 1, ?, ?, NOW(3), NOW(3))`,
+    [roleId, tenantId, creatorId, creatorId]
+  );
+  for (const permission of IAM_PERMISSION_CATALOG) {
+    const scope = permission.scopeModes.includes("tenant")
+      ? "tenant"
+      : permission.scopeModes.includes("public_pool")
+        ? "public_pool"
+        : permission.scopeModes[0];
+    if (!scope) continue;
+    await connection.query(
+      `INSERT INTO role_permission_bindings
+        (id, tenant_id, role_id, permission_code, scope_mode, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(3))`,
+      [id("rpb"), tenantId, roleId, permission.code, scope, creatorId]
+    );
+  }
+  return roleId;
 }
 
 function id(prefix: string) {
@@ -153,6 +184,68 @@ function supportPermissionForResource(resource: string) {
 
 export function createPlatformOperationsService(pool: mysql.Pool): PlatformOperationsService {
   return {
+    async registerPersonalAccount(input) {
+      const name = String(input.name || "").trim();
+      const phone = normalizeMainlandPhone(input.phone);
+      const password = String(input.password || "");
+      if (name.length < 2 || name.length > 40) fail(400, "请输入 2～40 个字的称呼");
+      if (!phone) fail(400, "请输入正确的中国大陆手机号");
+      if (password.length < 8 || password.length > 128) fail(400, "密码需为 8～128 位");
+      try {
+        return await withTransaction(pool, async (connection) => {
+          const existing = one<any>((await connection.query(`SELECT id FROM users WHERE phone = ? LIMIT 1 FOR UPDATE`, [phone]))[0]);
+          if (existing) fail(409, "该手机号已经注册，请直接登录");
+          const userId = id("user").slice(0, 64);
+          const tenantId = id("tenant").slice(0, 64);
+          const membershipId = id("mem");
+          const rootId = id("org");
+          const tenantCode = `personal_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+          const tenantName = `${name}的个人工作区`;
+          await connection.query(
+            `INSERT INTO tenants
+              (id, code, name, status, plan_code, seat_limit, authz_revision, created_at, updated_at)
+             VALUES (?, ?, ?, 'active', 'personal', 1, 1, NOW(3), NOW(3))`,
+            [tenantId, tenantCode, tenantName]
+          );
+          await connection.query(
+            `INSERT INTO organization_units
+              (id, tenant_id, parent_id, name, code, unit_type, path, depth, status, created_at, updated_at)
+             VALUES (?, ?, NULL, ?, 'personal', 'company', ?, 0, 'active', NOW(3), NOW(3))`,
+            [rootId, tenantId, tenantName, `/${rootId}/`]
+          );
+          const roleId = await seedPersonalOwnerRole(connection, tenantId, userId);
+          await connection.query(
+            `INSERT INTO users
+              (id, name, email, phone, account_mode, password_hash, role, team_id, avatar, status, auth_version, must_change_password)
+             VALUES (?, ?, ?, ?, 'personal', ?, 'admin', ?, ?, 'active', 1, FALSE)`,
+            [userId, name, `phone_${phone}@accounts.haituo.local`, phone, await hashPassword(password), tenantId, name.slice(0, 2).toUpperCase()]
+          );
+          await connection.query(
+            `INSERT INTO tenant_memberships
+              (id, tenant_id, user_id, status, primary_org_unit_id, membership_auth_version, joined_at, created_at, updated_at)
+             VALUES (?, ?, ?, 'active', ?, 1, NOW(3), NOW(3), NOW(3))`,
+            [membershipId, tenantId, userId, rootId]
+          );
+          await connection.query(
+            `INSERT INTO organization_memberships
+              (id, tenant_id, membership_id, org_unit_id, relation_type, valid_from, created_by, created_at)
+             VALUES (?, ?, ?, ?, 'primary', NOW(3), ?, NOW(3))`,
+            [id("om"), tenantId, membershipId, rootId, userId]
+          );
+          await connection.query(
+            `INSERT INTO member_role_assignments
+              (id, tenant_id, membership_id, role_id, scope_anchor_org_unit_id, status, reason, granted_by, created_at)
+             VALUES (?, ?, ?, ?, ?, 'active', '用户自主注册', ?, NOW(3))`,
+            [id("mra"), tenantId, membershipId, roleId, rootId, userId]
+          );
+          return { userId };
+        });
+      } catch (error) {
+        if (String((error as { code?: string }).code || "") === "ER_DUP_ENTRY") fail(409, "该手机号已经注册，请直接登录");
+        throw error;
+      }
+    },
+
     async authorizeAiPoolManage(actor) {
       await requirePlatformPermission(pool, actor, "platform.tenant.plan.manage");
     },

@@ -71,6 +71,7 @@ export function publicUser(user: ReturnType<typeof getStore>["users"][number]): 
     name: user.name,
     email: user.email,
     phone: user.phone || "",
+    accountMode: user.accountMode,
     role: user.role,
     teamId: user.teamId,
     avatar: user.avatar,

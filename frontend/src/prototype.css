@@ -15864,6 +15864,41 @@
       margin-bottom: 18px;
     }
 
+    .login-mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin: -10px 0 22px;
+      padding: 4px;
+      border: 1px solid #deddea;
+      border-radius: 12px;
+      background: #ebeaf2;
+    }
+
+    .login-mode-switch button {
+      min-height: 36px;
+      border: 0;
+      border-radius: 9px;
+      color: #77738b;
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .login-mode-switch button.active {
+      color: #292544;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(34, 31, 59, .1);
+    }
+
+    .login-submit {
+      width: 100%;
+      min-height: 49px;
+      margin-bottom: 18px;
+    }
+
     .login-field label {
       color: #37344f;
       font-size: 11px;

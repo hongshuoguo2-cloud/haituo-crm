@@ -62,6 +62,7 @@ interface User {
   name: string;
   email: string;
   phone?: string;
+  accountMode?: "personal";
   role: Role;
   iamRoleNames?: string[];
   iamSource?: "iam" | "legacy_compatibility" | "platform";
@@ -5999,8 +6000,54 @@ async function loginWithPassword(email: string, password: string) {
   await completeLogin(result.user);
 }
 
+function setLoginMode(mode: "login" | "register") {
+  const registering = mode === "register";
+  const loginForm = qs<HTMLElement>("#loginForm");
+  const registerForm = qs<HTMLElement>("#registerForm");
+  if (loginForm) loginForm.hidden = registering;
+  if (registerForm) registerForm.hidden = !registering;
+  const loginTab = qs<HTMLButtonElement>("#showLoginMode");
+  const registerTab = qs<HTMLButtonElement>("#showRegisterMode");
+  loginTab?.classList.toggle("active", !registering);
+  registerTab?.classList.toggle("active", registering);
+  loginTab?.setAttribute("aria-selected", String(!registering));
+  registerTab?.setAttribute("aria-selected", String(registering));
+  const description = qs<HTMLElement>("#loginModeDescription");
+  if (description) description.textContent = registering
+    ? "填一次信息，系统会自动建立你的个人工作区。"
+    : "用手机号和密码登录你的个人工作区。";
+  (registering ? qs<HTMLInputElement>("#registerName") : qs<HTMLInputElement>("#loginEmail"))?.focus();
+}
+
+async function registerPersonalAccount(button: HTMLButtonElement) {
+  const name = qs<HTMLInputElement>("#registerName")?.value.trim() || "";
+  const phone = qs<HTMLInputElement>("#registerPhone")?.value.trim() || "";
+  const password = qs<HTMLInputElement>("#registerPassword")?.value || "";
+  const confirmation = qs<HTMLInputElement>("#registerPasswordConfirm")?.value || "";
+  const normalizedPhone = phone.replace(/[\s()-]/gu, "").replace(/^(?:\+86|0086)/u, "");
+  if (name.length < 2) throw new Error("请输入至少 2 个字的称呼");
+  if (!/^1[3-9]\d{9}$/u.test(normalizedPhone)) throw new Error("请输入正确的中国大陆手机号");
+  if (password.length < 8) throw new Error("密码至少需要 8 位");
+  if (password !== confirmation) throw new Error("两次输入的密码不一致");
+  button.disabled = true;
+  const originalText = button.textContent || "注册并开始使用";
+  button.textContent = "正在创建工作区…";
+  try {
+    const result = await api<{ user: User }>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ name, phone: normalizedPhone, password })
+    });
+    toast("注册成功，已进入你的个人工作区", "success");
+    await completeLogin(result.user);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 function applyAuthedUser(user: User) {
-  const profileName = `${user.name} / ${roleLabel[user.role]}`;
+  const displayedRole = user.accountMode === "personal" ? "个人使用者" : roleLabel[user.role];
+  const profileName = `${user.name} / ${displayedRole}`;
   document.body.dataset.role = user.role;
   syncWorkspaceAccess(user);
   qs("#scopeUser")!.textContent = profileName;
@@ -6009,7 +6056,7 @@ function applyAuthedUser(user: User) {
   const topUserName = qs<HTMLElement>("#topUserName");
   const topUserRole = qs<HTMLElement>("#topUserRole");
   if (topUserName) topUserName.textContent = user.name;
-  if (topUserRole) topUserRole.textContent = user.iamRoleNames?.join(" / ") || roleLabel[user.role];
+  if (topUserRole) topUserRole.textContent = user.accountMode === "personal" ? "个人使用者" : user.iamRoleNames?.join(" / ") || roleLabel[user.role];
   syncTrainingManagementUi(user);
   renderProfile(user);
   applyTheme(getInitialTheme());
@@ -6033,7 +6080,7 @@ function isAccessControlView(view: string): view is typeof accessControlViews[nu
 }
 
 function isSystemAdministrator(user = state.user) {
-  return Boolean(user && (user.role === "admin" || user.role === "super_admin"));
+  return Boolean(user && user.accountMode !== "personal" && (user.role === "admin" || user.role === "super_admin"));
 }
 
 const viewPermissionRequirements: Record<string, string> = {
@@ -6133,6 +6180,7 @@ function syncTrainingManagementUi(user = state.user) {
 }
 
 function roleScopeText(user: User) {
+  if (user.accountMode === "personal") return "仅你的个人工作区数据";
   const permissions = state.iamCapabilities?.permissions || user.iamPermissions || {};
   if (state.iamCapabilities?.source === "platform" || user.iamSource === "platform") return "平台运维权限，禁止直接访问公司业务数据";
   const scopes = Object.values(permissions).flat();
@@ -6177,11 +6225,11 @@ function renderProfile(user = state.user) {
   const role = qs<HTMLElement>("#profileRoleText");
   const status = qs<HTMLElement>("#profileEmailStatus");
   const signatureStatus = qs<HTMLElement>("#profileSignatureStatus");
-  const teamText = user.teamId === "all" ? "全局团队" : `${user.teamId} 组`;
+  const teamText = user.accountMode === "personal" ? "个人工作区" : user.teamId === "all" ? "全局团队" : `${user.teamId} 组`;
   const mailReady = Boolean(user.outboundEmail);
   if (avatar) avatar.textContent = user.avatar;
   if (name) name.textContent = user.name;
-  const effectiveRoleName = state.iamCapabilities?.roleNames.join(" / ") || user.iamRoleNames?.join(" / ") || roleLabel[user.role];
+  const effectiveRoleName = user.accountMode === "personal" ? "个人使用者" : state.iamCapabilities?.roleNames.join(" / ") || user.iamRoleNames?.join(" / ") || roleLabel[user.role];
   if (role) role.textContent = `${effectiveRoleName} · ${roleScopeText(user)}`;
   qs<HTMLElement>("#profileStatusBadge")!.textContent = "账号正常";
   qs<HTMLElement>("#profileTeamBadge")!.textContent = teamText;
@@ -6191,7 +6239,9 @@ function renderProfile(user = state.user) {
     emailBadge.textContent = mailReady ? "发件邮箱已绑定" : "发件邮箱待绑定";
   }
   const allScopes = Object.values(state.iamCapabilities?.permissions || user.iamPermissions || {}).flat();
-  qs<HTMLElement>("#profileScopeMetric")!.textContent = user.iamSource === "platform" || state.iamCapabilities?.source === "platform"
+  qs<HTMLElement>("#profileScopeMetric")!.textContent = user.accountMode === "personal"
+    ? "个人数据"
+    : user.iamSource === "platform" || state.iamCapabilities?.source === "platform"
     ? "平台运维"
     : allScopes.includes("tenant") ? "公司范围" : allScopes.includes("org_subtree") || allScopes.includes("org_unit") ? "组织范围" : "本人业务";
   qs<HTMLElement>("#profileRoleMetric")!.textContent = effectiveRoleName;
@@ -6574,12 +6624,12 @@ async function loadIamCapabilities(user: User) {
   if (state.iamCapabilities) {
     const roleNames = state.iamCapabilities.roleNames || [];
     const topUserRole = qs<HTMLElement>("#topUserRole");
-    if (topUserRole) topUserRole.textContent = roleNames.join(" / ") || roleLabel[user.role];
+    if (topUserRole) topUserRole.textContent = user.accountMode === "personal" ? "个人使用者" : roleNames.join(" / ") || roleLabel[user.role];
     const scopeUser = qs<HTMLElement>("#scopeUser");
-    if (scopeUser) scopeUser.textContent = `${user.name} / ${roleNames.join(" / ") || roleLabel[user.role]}`;
+    if (scopeUser) scopeUser.textContent = `${user.name} / ${user.accountMode === "personal" ? "个人使用者" : roleNames.join(" / ") || roleLabel[user.role]}`;
     const allScopes = Object.values(state.iamCapabilities.permissions).flat();
     const scopeText = qs<HTMLElement>("#scopeText");
-    if (scopeText) scopeText.textContent = state.iamCapabilities.source === "platform" ? "平台运维控制域，不直接拥有公司业务权限" : allScopes.includes("tenant") ? "已按角色授权公司范围" : allScopes.includes("org_subtree") || allScopes.includes("org_unit") ? "已按角色授权组织范围" : "已按角色授权本人范围";
+    if (scopeText) scopeText.textContent = user.accountMode === "personal" ? "仅你的个人工作区数据" : state.iamCapabilities.source === "platform" ? "平台运维控制域，不直接拥有公司业务权限" : allScopes.includes("tenant") ? "已按角色授权公司范围" : allScopes.includes("org_subtree") || allScopes.includes("org_unit") ? "已按角色授权组织范围" : "已按角色授权本人范围";
   }
   syncWorkspaceAccess(user);
   renderTopbarForView(qs<HTMLElement>(".view.active")?.id || "dashboard");
@@ -32647,6 +32697,18 @@ function installEvents() {
     const password = qs<HTMLInputElement>("#loginPassword")?.value || "";
     void loginWithPassword(email, password).catch((error) => toast(error instanceof Error ? error.message : "登录失败", "error"));
   }, true);
+  qs<HTMLButtonElement>("#showLoginMode")?.addEventListener("click", () => setLoginMode("login"));
+  qs<HTMLButtonElement>("#showRegisterMode")?.addEventListener("click", () => setLoginMode("register"));
+  qs<HTMLButtonElement>("#registerButton")?.addEventListener("click", (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    void registerPersonalAccount(button).catch((error) => toast(error instanceof Error ? error.message : "注册失败", "error"));
+  });
+  qs<HTMLInputElement>("#loginPassword")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") qs<HTMLButtonElement>("#loginButton")?.click();
+  });
+  qs<HTMLInputElement>("#registerPasswordConfirm")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") qs<HTMLButtonElement>("#registerButton")?.click();
+  });
   qs<HTMLButtonElement>("#logoutButton")?.addEventListener("click", async () => {
     if (memoDirty && !await confirmAction({
       title: "退出并清除本机草稿",

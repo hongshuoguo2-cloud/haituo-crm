@@ -44,6 +44,13 @@ async function main() {
     return {status:res.status,headers:res.headers,data:await res.json()};
   }
   start();await ready(); console.log('Isolated database and HTTP server ready');
+  const personalPhone='13800000991', personalPassword='Haituo!'+suffix;
+  const personal=await request('/api/auth/register',{name:'自主注册用户',phone:'+86 '+personalPhone,password:personalPassword});
+  ok(personal.status===200 && personal.data.user.phone===personalPhone && personal.data.user.accountMode==='personal','User self-registers and enters a personal workspace');
+  const [personalRows]=await control.query(`SELECT u.password_hash,u.account_mode,t.plan_code,t.seat_limit,r.code AS role_code FROM \`${db}\`.users u JOIN \`${db}\`.tenants t ON t.id=u.team_id JOIN \`${db}\`.tenant_memberships tm ON tm.user_id=u.id AND tm.tenant_id=t.id JOIN \`${db}\`.member_role_assignments mra ON mra.membership_id=tm.id AND mra.tenant_id=t.id JOIN \`${db}\`.roles r ON r.id=mra.role_id AND r.tenant_id=t.id WHERE u.phone=?`,[personalPhone]);
+  ok(personalRows.length===1 && personalRows[0].password_hash.startsWith('scrypt$') && personalRows[0].account_mode==='personal' && personalRows[0].plan_code==='personal' && Number(personalRows[0].seat_limit)===1 && personalRows[0].role_code==='personal_owner','Personal registration persists one isolated workspace and a hashed password');
+  ok((await request('/api/auth/register',{name:'重复号码',phone:personalPhone,password:personalPassword})).status===409,'Duplicate phone registration is rejected');
+  ok((await request('/api/auth/login',{email:personalPhone,password:personalPassword})).status===200,'Self-registered user logs in with phone and chosen password');
   const platform=jwt.sign({ver:1,mfa:true},env.JWT_SECRET,{subject:'u_initial_super_admin',issuer:'haituo-crm',audience:'haituo-crm-web',expiresIn:'15m'});
   const tenantRes=await request('/api/platform/v1/tenants',{name:'海拓开户测试',code:'test-'+suffix},platform);
   if (tenantRes.status!==200) console.log('Tenant creation response:',tenantRes.status,tenantRes.data.message);
@@ -95,6 +102,18 @@ async function main() {
   ok((await request('/api/auth/login',{email:member.data.credentials.phone,password:memberPassword})).status===200,'Chosen password survives a server restart');
   const {chromium}=require('@playwright/test');
   browser=await chromium.launch({headless:true,...(process.env.HAITUO_TEST_BROWSER_PATH ? {executablePath:process.env.HAITUO_TEST_BROWSER_PATH} : {})});
+  const registrationPage=await browser.newPage({viewport:{width:1280,height:900}});
+  await registrationPage.goto(base,{waitUntil:'networkidle'});
+  await registrationPage.locator('#showRegisterMode').click();
+  await registrationPage.locator('#registerName').fill('界面自主注册');
+  await registrationPage.locator('#registerPhone').fill('13800000992');
+  await registrationPage.locator('#registerPassword').fill('Haituo!'+suffix);
+  await registrationPage.locator('#registerPasswordConfirm').fill('Haituo!'+suffix);
+  await registrationPage.locator('#registerButton').click();
+  await registrationPage.waitForSelector('body.is-authenticated');
+  ok((await registrationPage.locator('#topUserRole').textContent())==='个人使用者','Browser registration enters a personal workspace without administrator provisioning');
+  ok(await registrationPage.locator('[data-admin-only]').isHidden(),'Personal workspace hides company administration controls');
+  await registrationPage.close();
   const page=await browser.newPage({viewport:{width:1440,height:1000}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base,{waitUntil:'networkidle'});
@@ -114,7 +133,7 @@ async function main() {
   await page.locator('#appModal [data-modal-close]').last().click();
   await page.locator('[data-view="api-balance"]').evaluate(el=>el.click());
   await page.locator('#api-balance.active').waitFor();
-  ok(await page.getByRole('button',{name:'充值（待接入）'}).isDisabled(),'API balance entry has no fake recharge action');
+  ok(await page.locator('#apiBalanceKeyInput').isVisible(),'API balance page provides self-service model-key binding');
   await page.screenshot({path:path.join(temp,'api-balance.png'),fullPage:false});
   const signupPage=await browser.newPage({viewport:{width:1280,height:900}});
   await signupPage.goto(base,{waitUntil:'networkidle'});

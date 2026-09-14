@@ -45,6 +45,9 @@ const required = [
   "下载日志",
   "prototype-api.ts",
   "/api/auth/login",
+  "/api/auth/register",
+  "id=\"showRegisterMode\"",
+  "id=\"registerButton\"",
   "/api/dashboard/summary",
   "DASHBOARD_LIVE_REFRESH_MS",
   "refreshVisibleDashboard",
@@ -457,6 +460,10 @@ if (!prototype.includes(".report-hero") || !prototype.includes(".ocr-workbench")
 }
 
 assert.equal(prototype.includes("collab-inbox-nav"), false, "message center must not remain in sidebar navigation");
+assert.match(prototype, /自己注册，直接使用/, "登录页必须说明用户可自主注册");
+assert.match(apiLayer, /async function registerPersonalAccount/, "前端必须提供手机号自主注册流程");
+assert.match(backendServer, /app\.post\("\/api\/auth\/register"/, "后端必须提供自主注册接口");
+assert.match(platformOperationsService, /'personal_owner'/, "自主注册必须创建隔离的个人工作区角色");
 assert.match(prototype, /class="lead-settings-summary"/, "来源与执行设置必须有醒目的标题样式");
 assert.match(prototype, /免费源效果可能不佳，默认不勾选/, "来源设置必须提示免费源默认不勾选及质量风险");
 assert.match(prototype, /lead-settings-summary::before/, "来源设置必须显示可展开的箭头 affordance");
